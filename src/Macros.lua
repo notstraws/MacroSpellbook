@@ -27,7 +27,8 @@ end
 -- stance the spell can be cast in first), "petAttack" (the macro also sends
 -- the pet to attack), "stopCast" (the macro stops the current cast first) or "startAttack" (the macro
 -- starts melee auto-attack after the cast). For petAttack, stopCast and startAttack, true or false overrides the
--- setting's default (optionDefault), nil follows it. Read lazily: saved
+-- setting's default (optionDefault), nil follows it. "useItems" holds a list of equipment slots instead of a
+-- flag: the macro uses each slot's item, in that order, before the cast. Read lazily: saved
 -- variables are not loaded until ADDON_LOADED, after this file runs.
 local function settings(key)
     MacroSpellbookDB = MacroSpellbookDB or {}
@@ -196,13 +197,14 @@ function smb.classOffersStartAttack()
 end
 
 -- Every spell macro offers "stopCast", or "startAttack" for a melee class, except a stealth spell's:
--- attacking would break the stealth. A focus copy shares its spell's setting.
+-- attacking would break the stealth. A focus copy shares its spell's setting. Custom and equipment macros
+-- offer neither.
 function smb.offersStopCast(macro)
-    return not macro.custom and not smb.classOffersStartAttack()
+    return not macro.custom and not macro.equipment and not smb.classOffersStartAttack()
 end
 
 function smb.offersStartAttack(macro)
-    return not macro.custom and not macro.stealth and smb.classOffersStartAttack()
+    return not macro.custom and not macro.equipment and not macro.stealth and smb.classOffersStartAttack()
 end
 
 -- Whether a macro offers an option ("mouseover", "cursor", "focus", "pet", "raidRank1", "spam", "stance",
@@ -246,9 +248,30 @@ function smb.hasCastOptions(macro)
         or macro.stances ~= nil
 end
 
+-- Every spell macro offers using equipped items before the cast. A focus copy shares its spell's slots.
+function smb.offersUseItems(macro)
+    return not macro.custom and not macro.equipment
+end
+
+local NO_SLOTS = {}
+
+-- The equipment slots a macro uses before its cast, in the order the player ticked them. Don't modify it.
+function smb.useItemSlots(macro)
+    if not smb.offersUseItems(macro) then return NO_SLOTS end
+    return settings("useItems")[macro.name] or NO_SLOTS
+end
+
+-- A slot's place in a macro's useItemSlots, or nil when the macro doesn't use it.
+function smb.isUsingSlot(macro, slot)
+    for i, used in ipairs(smb.useItemSlots(macro)) do
+        if used == slot then return i end
+    end
+end
+
 -- Whether a macro has an options menu: every spell macro does, for stopCast or startAttack.
 function smb.hasOptions(macro)
     return smb.hasCastOptions(macro) or smb.offersStopCast(macro) or smb.offersStartAttack(macro)
+        or smb.offersUseItems(macro)
 end
 
 -- A macro conditional joining the given conditions (nil or "" ones are skipped) behind the always-present
@@ -322,11 +345,12 @@ end
 
 local scanTooltip -- hidden tooltip for clients without C_TooltipInfo
 
--- The text of a spell's tooltip lines, left and right.
-local function tooltipLines(id)
+-- The text of a tooltip's lines, left and right. infoGetter is the C_TooltipInfo function and setter the
+-- GameTooltip method that fill it (e.g. "GetSpellByID" and "SetSpellByID"), both called with the rest.
+local function scanLines(infoGetter, setter, ...)
     local lines = {}
-    if C_TooltipInfo and C_TooltipInfo.GetSpellByID then
-        local data = C_TooltipInfo.GetSpellByID(id)
+    if C_TooltipInfo and C_TooltipInfo[infoGetter] then
+        local data = C_TooltipInfo[infoGetter](...)
         for _, line in ipairs(data and data.lines or {}) do
             lines[#lines + 1] = line.leftText
             lines[#lines + 1] = line.rightText
@@ -336,7 +360,7 @@ local function tooltipLines(id)
     local name = addonName .. "ScanTooltip"
     scanTooltip = scanTooltip or CreateFrame("GameTooltip", name, nil, "GameTooltipTemplate")
     scanTooltip:SetOwner(WorldFrame, "ANCHOR_NONE")
-    scanTooltip:SetSpellByID(id)
+    scanTooltip[setter](scanTooltip, ...)
     for i = 1, scanTooltip:NumLines() do
         for _, side in ipairs({"Left", "Right"}) do
             local text = _G[name .. "Text" .. side .. i]
@@ -345,6 +369,11 @@ local function tooltipLines(id)
     end
     scanTooltip:Hide()
     return lines
+end
+
+-- The text of a spell's tooltip lines, left and right.
+local function tooltipLines(id)
+    return scanLines("GetSpellByID", "SetSpellByID", id)
 end
 
 -- The stances a spell's tooltip says it requires ("Requires Battle Stance, Defensive Stance"), in the
@@ -393,13 +422,18 @@ end
 local function castBody(macro)
     -- the spam option adds [nochanneling:<spell>] (or [nostealth]) to every cast clause, so a press while
     -- the spell is channelling (or stealth is on) can't restart (or cancel) it; the stopCast option stops
-    -- the current cast first (but, with spam on, not this spell's own channel); the petAttack option sends the pet at the current target before the
-    -- cast; the stance option switches stance before the cast, and names the spell in #showtooltip so the
-    -- button doesn't show the stance
+    -- the current cast first (but, with spam on, not this spell's own channel); the useItems slots are used
+    -- next, in order; the petAttack option sends the pet at the current target before the
+    -- cast; the stance option switches stance before the cast. With items or a stance, #showtooltip names
+    -- the spell so the button doesn't show the item or the stance
     local spam = smb.isOptionOn(macro, "spam") and macro.spam or nil
     local stopCast = smb.isOptionOn(macro, "stopCast") and "/stopcasting" .. (spam and " [" .. spam .. "]" or "") .. "\n"
+    local useLines = {}
+    for i, slot in ipairs(smb.useItemSlots(macro)) do useLines[i] = "/use " .. slot .. "\n" end
+    local use = table.concat(useLines)
     local stance = smb.isOptionOn(macro, "stance") and stanceLine(macro.stances) or ""
-    local header = "#showtooltip" .. (stance ~= "" and " " .. macro.name or "") .. "\n" .. (stopCast or "")
+    local namesSpell = stance ~= "" or use ~= ""
+    local header = "#showtooltip" .. (namesSpell and " " .. macro.name or "") .. "\n" .. (stopCast or "") .. use
         .. (smb.isOptionOn(macro, "petAttack") and "/petattack\n" or "") .. stance
     -- "/cast <conditional> name", or "/cast name" when there is no conditional
     local function cast(conditional)
@@ -544,6 +578,80 @@ local function addCustomMacros(taken)
     end
 end
 
+local getItemSpell = C_Item and C_Item.GetItemSpell or GetItemSpell
+
+-- The names equipment macros show and take, by inventory slot.
+local SLOT_LABELS = {
+    [1] = "Head", [2] = "Neck", [3] = "Shoulder", [4] = "Shirt", [5] = "Chest", [6] = "Waist", [7] = "Legs",
+    [8] = "Feet", [9] = "Wrist", [10] = "Hands", [11] = "Ring 1", [12] = "Ring 2", [13] = "Trinket 1",
+    [14] = "Trinket 2", [15] = "Back", [16] = "Main Hand", [17] = "Off Hand", [18] = "Ranged", [19] = "Tabard",
+}
+
+-- Whether the item in an equipment slot has a "Use:" effect. The tooltip check catches effects added to the
+-- item, such as engineering tinkers, which GetItemSpell on the item itself may not see.
+local function hasUseEffect(slot, link)
+    if getItemSpell and getItemSpell(link) then return true end
+    local prefix = ITEM_SPELL_TRIGGER_ONUSE or "Use:"
+    for _, text in ipairs(scanLines("GetInventoryItem", "SetInventoryItem", "player", slot)) do
+        if type(text) == "string" and text:sub(1, #prefix) == prefix then return true end
+    end
+    return false
+end
+
+-- A macro that uses whatever is in an equipment slot, so it keeps working when the item is swapped. It has
+-- no options menu.
+local function makeEquipmentMacro(slot, link, categoryRank)
+    local label = SLOT_LABELS[slot]
+    return {
+        name = link:match("%[(.-)%]") or label,
+        equipment = true,
+        slot = slot,
+        slotLabel = label,
+        categoryRank = categoryRank,
+        priority = slot,
+        category = "Equipment",
+        cursor = false,
+        macroName = ("Use " .. label):sub(1, MAX_MACRO_NAME),
+        macroIcon = ICON_QUESTION_MARK,
+        icon = GetInventoryItemTexture("player", slot) or ICON_QUESTION_MARK,
+        body = "#showtooltip\n/use " .. slot,
+    }
+end
+
+-- The equipped items with a "Use:" effect, in slot order, as {slot = 13, link = ...}.
+function smb.usableSlots()
+    local usable = {}
+    for slot = 1, #SLOT_LABELS do
+        local link = GetInventoryItemLink("player", slot)
+        if link and hasUseEffect(slot, link) then
+            usable[#usable + 1] = {slot = slot, link = link}
+        end
+    end
+    return usable
+end
+
+-- The name a slot shows in menus: its label, plus the equipped item's name when there is one.
+function smb.slotLabel(slot)
+    local link = GetInventoryItemLink("player", slot)
+    local item = link and link:match("%[(.-)%]")
+    return SLOT_LABELS[slot] .. (item and ": " .. item or "")
+end
+
+-- Appends a macro for each equipped item with a "Use:" effect to smb.macros. taken holds the macro names
+-- already in use. The section follows the custom macros unless the class config places an "Equipment"
+-- category.
+local function addEquipmentMacros(taken)
+    local c = classConfig()
+    local categoryRank = c.categoryRankByName.Equipment or #c.categories + #c.custom + 1
+    for _, usable in ipairs(smb.usableSlots()) do
+        local macro = makeEquipmentMacro(usable.slot, usable.link, categoryRank)
+        if not taken[macro.macroName] then
+            taken[macro.macroName] = true
+            smb.macros[#smb.macros + 1] = macro
+        end
+    end
+end
+
 -- Calls fn(name, icon, id) for every learned, castable spell outside the General skill line, in skill line
 -- order.
 local function forEachClassSpell(fn)
@@ -635,8 +743,8 @@ local function forEachUnlearnedSpell(fn, learned)
     end
 end
 
--- Rebuilds smb.macros: the learned spells (from the spellbook) and the class config's custom macros, plus
--- the spells not learned yet when smb.showsUnlearned().
+-- Rebuilds smb.macros: the learned spells (from the spellbook), the class config's custom macros and the
+-- equipped items with a "Use:" effect, plus the spells not learned yet when smb.showsUnlearned().
 function smb.collectMacros()
     wipe(smb.macros)
     local taken, seen = {}, {}
@@ -658,6 +766,7 @@ function smb.collectMacros()
         end
     end)
     addCustomMacros(taken)
+    addEquipmentMacros(taken)
     if smb.showsUnlearned() then
         forEachUnlearnedSpell(function(name, icon, id) add(name, icon, true, id) end, seen)
     end
@@ -680,7 +789,8 @@ local function syncMacro(macro, index)
 end
 
 -- Creates the macro on first use (character specific, or general once those slots are full), then puts
--- it on the cursor so it can be dropped on an action bar.
+-- it on the cursor so it can be dropped on an action bar. Equipment macros are always general: their body
+-- names only the slot, so every character shares them.
 function smb.pickupMacro(macro)
     if InCombatLockdown() then
         UIErrorsFrame:AddMessage(ERR_NOT_IN_COMBAT, 1, 0.1, 0.1)
@@ -689,9 +799,10 @@ function smb.pickupMacro(macro)
     local index = GetMacroIndexByName(macro.macroName)
     if index == 0 then
         local numAccount, numCharacter = GetNumMacros()
-        local perCharacter = numCharacter < maxCharacterMacros()
+        local perCharacter = not macro.equipment and numCharacter < maxCharacterMacros()
         if not perCharacter and numAccount >= maxAccountMacros() then
-            UIErrorsFrame:AddMessage(addonName .. ": no free macro slots.", 1, 0.1, 0.1)
+            UIErrorsFrame:AddMessage(addonName .. ": no free " .. (macro.equipment and "general " or "")
+                .. "macro slots.", 1, 0.1, 0.1)
             return
         end
         index = CreateMacro(macro.macroName, macro.macroIcon, macro.body, perCharacter)
@@ -734,7 +845,7 @@ end
 -- macro does.
 function smb.isOnActionBars(macro, bars)
     if bars.macros[macro.macroName] then return true end
-    if macro.custom or macro.focus or not bars.spells[macro.name] then return false end
+    if macro.custom or macro.equipment or macro.focus or not bars.spells[macro.name] then return false end
     return smb.countsSpellsOnBars() or macro.body == bareBody(macro.name)
 end
 
@@ -754,6 +865,21 @@ function smb.toggleOption(macro, key)
     else
         toggleSetting(key, macro.name)
     end
+    macro.body = macroBody(macro)
+    if InCombatLockdown() then return end
+    syncMacro(macro, GetMacroIndexByName(macro.macroName))
+end
+
+-- Adds an equipment slot to the end of the macro's useItems list, or removes it, then rewrites the macro
+-- like smb.toggleOption. The focus copy changes too, so the page must be rebuilt after.
+function smb.toggleUseSlot(macro, slot)
+    local slots = {}
+    local at = smb.isUsingSlot(macro, slot)
+    for i, used in ipairs(smb.useItemSlots(macro)) do
+        if i ~= at then slots[#slots + 1] = used end
+    end
+    if not at then slots[#slots + 1] = slot end
+    settings("useItems")[macro.name] = #slots > 0 and slots or nil
     macro.body = macroBody(macro)
     if InCombatLockdown() then return end
     syncMacro(macro, GetMacroIndexByName(macro.macroName))

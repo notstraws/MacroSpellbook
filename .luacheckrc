@@ -17,11 +17,12 @@ read_globals = {
 	"tContains", "wipe",
 
 	-- Namespaces
-	"C_Spell", "C_SpellBook", "C_Texture", "C_Timer",
+	"C_Item", "C_Spell", "C_SpellBook", "C_Texture", "C_Timer",
 	"C_TooltipInfo", "C_Trainer", "Enum", "EventRegistry", "EventUtil", "InputUtil", "MenuUtil",
 
 	-- Functions
 	"CreateFrame", "CreateMacro", "EditMacro", "GetActionInfo", "GetActionText",
+	"GetInventoryItemLink", "GetInventoryItemTexture", "GetItemSpell",
 	"GetMacroIndexByName", "GetMacroInfo", "GetNumMacros", "GetNumShapeshiftForms",
 	"GetNumSpellTabs", "GetNumTrainerServices", "GetShapeshiftFormInfo", "GetSpellBookItemInfo",
 	"GetSpellBookItemName", "GetSpellBookItemTexture", "GetSpellTabInfo", "GetSpellTexture",
@@ -31,5 +32,5 @@ read_globals = {
 
 	-- Frames / objects / constants
 	"GameTooltip", "PlayerSpellsFrame", "UIErrorsFrame", "UIParent", "WorldFrame",
-	"BOOKTYPE_SPELL", "ERR_NOT_IN_COMBAT", "MAX_ACCOUNT_MACROS", "MAX_CHARACTER_MACROS", "SOUNDKIT",
+	"BOOKTYPE_SPELL", "ERR_NOT_IN_COMBAT", "ITEM_SPELL_TRIGGER_ONUSE", "MAX_ACCOUNT_MACROS", "MAX_CHARACTER_MACROS", "SOUNDKIT",
 }

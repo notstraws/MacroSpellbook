@@ -57,6 +57,11 @@ local _, smb = ...
 --   Rogues get "Start Attack After Casting" and "Start attack after spell cast" instead, which end the
 --   macro with /startattack.
 --
+-- Using items isn't set here either: every spell offers "Use Before Casting" (right-click a macro), listing
+--   your equipped items with a "Use:" effect, e.g. engineering gloves and trinkets. Tick several to stack
+--   them: the macro uses each one, in the order you ticked them, before the cast. The macro uses the slot,
+--   not the item, so it keeps working when you swap a trinket.
+--
 -- extraSpells: spell IDs to list with "Show Unlearned" on until learned, for spells that neither the
 --   bundled trainer data (Data/) nor your class trainer offers, e.g. quest or book spells. Use the rank 1 ID
 --   (the number in the spell's Wowhead URL).

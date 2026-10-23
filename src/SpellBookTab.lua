@@ -47,6 +47,28 @@ local function showMacroMenu(button)
         elseif smb.offersStopCast(macro) then
             addOption("Stop Casting Before Casting", "stopCast")
         end
+        if smb.offersUseItems(macro) then
+            -- the equipped on-use items, plus any slot already ticked so it can be unticked after a gear swap
+            local slots, listed = {}, {}
+            for _, usable in ipairs(smb.usableSlots()) do
+                slots[#slots + 1], listed[usable.slot] = usable.slot, true
+            end
+            for _, slot in ipairs(smb.useItemSlots(macro)) do
+                if not listed[slot] then slots[#slots + 1] = slot end
+            end
+            if #slots > 0 then
+                local submenu = rootDescription:CreateButton("Use Before Casting")
+                for _, slot in ipairs(slots) do
+                    local at = smb.isUsingSlot(macro, slot)
+                    submenu:CreateCheckbox(smb.slotLabel(slot) .. (at and " (" .. at .. ")" or ""),
+                        function() return smb.isUsingSlot(macro, slot) ~= nil end,
+                        function()
+                            smb.toggleUseSlot(macro, slot)
+                            refresh(button:GetParent()) -- rewrites the focus copy too
+                        end)
+                end
+            end
+        end
     end)
 end
 
@@ -171,8 +193,11 @@ local function createMacroButton(parent)
     end)
     button:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText(self.macro.name)
-        GameTooltip:AddLine(self.macro.body, 1, 1, 1, true)
+        -- an equipment macro shows its item, with the item's Use: line
+        if not (self.macro.equipment and GameTooltip:SetInventoryItem("player", self.macro.slot)) then
+            GameTooltip:SetText(self.macro.name)
+            GameTooltip:AddLine(self.macro.body, 1, 1, 1, true)
+        end
         if self.macro.unlearned then
             GameTooltip:AddLine("Not learned yet.", 1, 0.1, 0.1, true)
         elseif self.glow:IsShown() then
@@ -215,6 +240,9 @@ function setMacro(button, macro, bars)
     if macro.custom then
         button.subText:SetText("Custom")
         button.subText:SetTextColor(unpack(INK_COLOR))
+    elseif macro.equipment then
+        button.subText:SetText(macro.slotLabel)
+        button.subText:SetTextColor(unpack(INK_COLOR))
     elseif macro.focus then
         button.subText:SetText("Focus")
         button.subText:SetTextColor(unpack(MOUSEOVER_COLOR))
@@ -229,6 +257,9 @@ function setMacro(button, macro, bars)
         button.subText:SetTextColor(unpack(MOUSEOVER_COLOR))
     elseif smb.isOptionOn(macro, "stance") then
         button.subText:SetText("Stance")
+        button.subText:SetTextColor(unpack(MOUSEOVER_COLOR))
+    elseif smb.useItemSlots(macro)[1] then
+        button.subText:SetText("Use items")
         button.subText:SetTextColor(unpack(MOUSEOVER_COLOR))
     elseif smb.isOptionOn(macro, "petAttack") then
         button.subText:SetText("Pet attack")
@@ -440,6 +471,7 @@ local function buildPage(page)
 
     page:SetScript("OnSizeChanged", function(self) if self:IsVisible() then layout(self) end end)
     page:RegisterEvent("SPELLS_CHANGED")
+    page:RegisterEvent("PLAYER_EQUIPMENT_CHANGED") -- the Equipment section follows the gear worn
     -- unlearned spells whose names weren't loaded were skipped; redraw once a burst of them arrives
     page:RegisterEvent("SPELL_DATA_LOAD_RESULT")
     -- placing or removing an action only changes the glows; redraw them once per burst
