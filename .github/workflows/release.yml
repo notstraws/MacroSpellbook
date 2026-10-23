@@ -1,14 +1,27 @@
 name: Lint and Release
 
-# Runs only when a tag is pushed or the workflow is started by hand, and only for the repo owner:
-# both jobs are skipped for anyone else, even collaborators with write access.
+# Runs in three cases:
+# - A push to main (a merged PR) that changes shipped addon files: tags the next patch beta
+#   (vX.Y.(Z+1)-beta.N, after the latest stable tag) and uploads it to CurseForge as a Beta.
+#   The tag is created and uploaded in this same run, because a tag pushed with GITHUB_TOKEN
+#   doesn't trigger other workflow runs.
+# - A pushed v* tag: uploads that tag (release type set by its suffix).
+# - Started by hand: uploads an Alpha.
+# Only for the repo owner: all jobs are skipped for anyone else, even collaborators with write access.
 on:
   push:
     tags: ["v*"]
+    branches: [main]
+    paths: ["src/**", "libs/**", "MacroSpellbook.toc"]
   workflow_dispatch:
 
 permissions:
   contents: read
+
+# Serialize runs so two quick merges can't pick the same beta number.
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
   lint:
@@ -20,15 +33,59 @@ jobs:
       - name: Run luacheck
         uses: lunarmodules/luacheck@v1
 
-  release:
+  tag:
     needs: lint
-    if: github.actor == github.repository_owner && github.triggering_actor == github.repository_owner
+    if: github.event_name == 'push' && github.ref_type == 'branch' && github.actor == github.repository_owner && github.triggering_actor == github.repository_owner
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      tag: ${{ steps.next.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create and push the next beta tag
+        id: next
+        run: |
+          set -euo pipefail
+
+          existing=$(git tag --points-at HEAD -l 'v*' | head -n 1)
+          if [ -n "$existing" ]; then
+            echo "HEAD is already tagged $existing"
+            echo "tag=$existing" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          stable=$(git tag -l 'v*' --sort=-v:refname | grep -v -- '-' | head -n 1 || true)
+          stable=${stable:-v0.0.0}
+          IFS=. read -r major minor patch <<< "${stable#v}"
+          base="v${major}.${minor}.$((patch + 1))"
+
+          last=$(git tag -l "${base}-beta.*" | sed "s/^${base}-beta\.//" | grep -E '^[0-9]+$' | sort -n | tail -n 1 || true)
+          tag="${base}-beta.$(( ${last:-0} + 1 ))"
+
+          git tag "$tag"
+          git push origin "$tag"
+          echo "Created $tag"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+  release:
+    needs: [lint, tag]
+    # always() so this still runs when "tag" is skipped (tag pushes and manual runs).
+    if: >-
+      always() &&
+      needs.lint.result == 'success' &&
+      (needs.tag.result == 'success' || needs.tag.result == 'skipped') &&
+      github.actor == github.repository_owner && github.triggering_actor == github.repository_owner
     runs-on: ubuntu-latest
     env:
       CF_API_KEY: ${{ secrets.CF_API_KEY }}
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ needs.tag.outputs.tag || github.ref }}
           fetch-depth: 0 # packager needs history for changelog generation
 
       - name: Package and upload to CurseForge
