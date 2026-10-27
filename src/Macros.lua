@@ -27,9 +27,10 @@ end
 -- stance the spell can be cast in first), "petAttack" (the macro also sends
 -- the pet to attack), "stopCast" (the macro stops the current cast first) or "startAttack" (the macro
 -- starts melee auto-attack after the cast). For petAttack, stopCast and startAttack, true or false overrides the
--- setting's default (optionDefault), nil follows it. "stopCastAfter" and "startAttackBefore" also add that line
--- on the other side of the cast (see smb.isLineOn). "useItems" and "useItemsAfter" hold a list of equipment
--- slots instead of a flag: the macro uses each slot's item, in that order, before (or after) the cast. Read lazily: saved
+-- setting's default (optionDefault), nil follows it. "startAttackBefore" also adds /startattack before the
+-- cast (see smb.isLineOn); an old "stopCastAfter" is ignored. "useItems" and "useItemsAfter" hold a list of equipment
+-- slots instead of a flag: the macro uses each slot's item, in that order, before (or after) the cast. "racials" and
+-- "racialsAfter" hold a set of racial names: the macro casts each one before (or after) the cast. Read lazily: saved
 -- variables are not loaded until ADDON_LOADED, after this file runs.
 local function settings(key)
     MacroSpellbookDB = MacroSpellbookDB or {}
@@ -266,19 +267,21 @@ function smb.isOptionOn(macro, key)
 end
 
 -- The side of the cast the stopCast and startAttack settings themselves (with their defaults) put the line
--- on, and the setting that adds it on the other side too.
+-- on, and the setting that adds it on the other side too. stopCast has no other side: stopping a cast after
+-- casting would cancel the spell just cast.
 local PLACEMENT = {
-    stopCast = {main = "before", other = "after", setting = "stopCastAfter"},
+    stopCast = {main = "before"},
     startAttack = {main = "after", other = "before", setting = "startAttackBefore"},
 }
 
 -- Whether a macro has its "stopCast" or "startAttack" line on a side ("before" or "after") of the cast;
--- either, both or neither can be on. A focus copy shares its spell's settings.
+-- startAttack can be on either, both or neither, stopCast only before. A focus copy shares its spell's
+-- settings.
 function smb.isLineOn(macro, key, side)
     local placement = PLACEMENT[key]
     if side == placement.main then return smb.isOptionOn(macro, key) end
-    local offered = key == "stopCast" and smb.offersStopCast(macro) or key == "startAttack" and smb.offersStartAttack(macro)
-    return offered and settings(placement.setting)[macro.name] == true
+    if side ~= placement.other then return false end
+    return smb.offersStartAttack(macro) and settings(placement.setting)[macro.name] == true
 end
 
 -- Whether a macro offers a way to cast other than the plain spell's (any option but stopCast and
@@ -310,6 +313,77 @@ function smb.isUsingSlot(macro, slot, side)
     for i, used in ipairs(smb.useItemSlots(macro, side)) do
         if used == slot then return i end
     end
+end
+
+-- Calls fn(name, icon, id) for every learned, castable spell in the spellbook's skill lines first to last
+-- (nil for the last one), in skill line order.
+local function forEachSpellInLines(first, last, fn)
+    if C_SpellBook and C_SpellBook.GetNumSpellBookSkillLines then
+        local bank = Enum.SpellBookSpellBank.Player
+        for line = first, last or C_SpellBook.GetNumSpellBookSkillLines() do
+            local info = C_SpellBook.GetSpellBookSkillLineInfo(line)
+            if info and not info.shouldHide and not info.offSpecID then
+                for slot = info.itemIndexOffset + 1, info.itemIndexOffset + info.numSpellBookItems do
+                    local item = C_SpellBook.GetSpellBookItemInfo(slot, bank)
+                    if item and item.itemType == Enum.SpellBookItemType.Spell and not item.isPassive
+                            and not item.isOffSpec then
+                        fn(item.name, item.iconID, item.spellID or item.actionID)
+                    end
+                end
+            end
+        end
+    else
+        for line = first, last or GetNumSpellTabs() do
+            local _, _, offset, numSlots = GetSpellTabInfo(line)
+            for slot = offset + 1, offset + numSlots do
+                local itemType, id = GetSpellBookItemInfo(slot, BOOKTYPE_SPELL)
+                if itemType == "SPELL" and not IsPassiveSpell(slot, BOOKTYPE_SPELL) then
+                    fn(GetSpellBookItemName(slot, BOOKTYPE_SPELL), GetSpellBookItemTexture(slot, BOOKTYPE_SPELL), id)
+                end
+            end
+        end
+    end
+end
+
+-- The player's racials from smb.racials (Config.lua) that are learned: in the spellbook's General skill
+-- line. In config order.
+function smb.offeredRacials()
+    local wanted = smb.racials[select(2, UnitRace("player"))]
+    if not wanted then return NO_SLOTS end
+    local learned = {}
+    forEachSpellInLines(1, 1, function(name) learned[name] = true end)
+    local racials = {}
+    for _, name in ipairs(wanted) do
+        if learned[name] then racials[#racials + 1] = name end
+    end
+    return racials
+end
+
+-- the setting holding a macro's racials for each side of the cast
+local RACIAL_SETTING = {before = "racials", after = "racialsAfter"}
+
+-- Whether a macro casts a racial on a side ("before" or "after") of the cast. Every spell macro offers its
+-- race's learned racials. A focus copy shares its spell's racials.
+function smb.isRacialOn(macro, racial, side)
+    local set = settings(RACIAL_SETTING[side])[macro.name]
+    if not (set and set[racial] and smb.offersUseItems(macro)) then return false end
+    return tContains(smb.offeredRacials(), racial)
+end
+
+-- The racials a macro casts on a side of the cast, in config order.
+local function racialsOn(macro, side)
+    local on = {}
+    local set = smb.offersUseItems(macro) and settings(RACIAL_SETTING[side])[macro.name]
+    if not set then return on end
+    for _, racial in ipairs(smb.offeredRacials()) do
+        if set[racial] then on[#on + 1] = racial end
+    end
+    return on
+end
+
+-- Whether a macro casts any racial on either side of the cast.
+function smb.hasRacialOn(macro)
+    return racialsOn(macro, "before")[1] ~= nil or racialsOn(macro, "after")[1] ~= nil
 end
 
 -- Whether a macro has an options menu: every spell macro does, for stopCast or startAttack.
@@ -481,15 +555,17 @@ local function castBody(macro)
     -- the spam option adds [nochanneling:<spell>] (or [nostealth]) to every cast clause, so a press while
     -- the spell is channelling (or stealth is on) can't restart (or cancel) it; the stopCast option stops
     -- the current cast first (but, with spam on, not this spell's own channel) and the startAttack option
-    -- starts auto-attack, each when placed before the cast; the before-cast useItems slots are used
-    -- next, in order; the petAttack option sends the pet at the current target before the
-    -- cast; the stance option switches stance before the cast. With items, a stance or /startattack first,
-    -- #showtooltip names the spell so the button doesn't show the item or the stance
+    -- starts auto-attack, each when placed before the cast; the before-cast racials are cast and the
+    -- before-cast useItems slots used next, in order; the petAttack option sends the pet at the current
+    -- target before the cast; the stance option switches stance before the cast. With racials, items, a
+    -- stance or /startattack first, #showtooltip names the spell so the button doesn't show the item or the
+    -- stance
     local spam = smb.isOptionOn(macro, "spam") and macro.spam or nil
     local stopCast = beforeLine(macro, "stopCast", spam)
     local startAttack = beforeLine(macro, "startAttack", spam)
     local useLines = {}
-    for i, slot in ipairs(smb.useItemSlots(macro)) do useLines[i] = "/use " .. slot .. "\n" end
+    for _, racial in ipairs(racialsOn(macro, "before")) do useLines[#useLines + 1] = "/cast " .. racial .. "\n" end
+    for _, slot in ipairs(smb.useItemSlots(macro)) do useLines[#useLines + 1] = "/use " .. slot .. "\n" end
     local use = table.concat(useLines)
     local stance = smb.isOptionOn(macro, "stance") and stanceLine(macro.stances) or ""
     local namesSpell = stance ~= "" or use ~= "" or startAttack ~= ""
@@ -527,16 +603,15 @@ local function castBody(macro)
     return header .. cast(cond(spam))
 end
 
--- The useItemsAfter slots, in order, then the stopCast and startAttack options placed after the cast end the
--- macro, /stopcasting before /startattack. #showtooltip still shows the spell: its /cast comes first.
+-- The racials cast after the cast, then the useItemsAfter slots, in order, then the startAttack option
+-- placed after the cast end the macro.
+-- #showtooltip still shows the spell: its /cast comes first.
 local function macroBody(macro)
     local body = castBody(macro)
+    for _, racial in ipairs(racialsOn(macro, "after")) do body = body .. "\n/cast " .. racial end
     for _, slot in ipairs(smb.useItemSlots(macro, "after")) do body = body .. "\n/use " .. slot end
-    local spam = smb.isOptionOn(macro, "spam") and macro.spam or nil
-    for _, key in ipairs({"stopCast", "startAttack"}) do
-        local line = placedLine(macro, key, "after", spam)
-        if line then body = body .. "\n" .. line end
-    end
+    local line = placedLine(macro, "startAttack", "after")
+    if line then body = body .. "\n" .. line end
     return body
 end
 
@@ -723,31 +798,7 @@ end
 -- Calls fn(name, icon, id) for every learned, castable spell outside the General skill line, in skill line
 -- order.
 local function forEachClassSpell(fn)
-    if C_SpellBook and C_SpellBook.GetNumSpellBookSkillLines then
-        local bank = Enum.SpellBookSpellBank.Player
-        for line = 2, C_SpellBook.GetNumSpellBookSkillLines() do
-            local info = C_SpellBook.GetSpellBookSkillLineInfo(line)
-            if info and not info.shouldHide and not info.offSpecID then
-                for slot = info.itemIndexOffset + 1, info.itemIndexOffset + info.numSpellBookItems do
-                    local item = C_SpellBook.GetSpellBookItemInfo(slot, bank)
-                    if item and item.itemType == Enum.SpellBookItemType.Spell and not item.isPassive
-                            and not item.isOffSpec then
-                        fn(item.name, item.iconID, item.spellID or item.actionID)
-                    end
-                end
-            end
-        end
-    else
-        for line = 2, GetNumSpellTabs() do
-            local _, _, offset, numSlots = GetSpellTabInfo(line)
-            for slot = offset + 1, offset + numSlots do
-                local itemType, id = GetSpellBookItemInfo(slot, BOOKTYPE_SPELL)
-                if itemType == "SPELL" and not IsPassiveSpell(slot, BOOKTYPE_SPELL) then
-                    fn(GetSpellBookItemName(slot, BOOKTYPE_SPELL), GetSpellBookItemTexture(slot, BOOKTYPE_SPELL), id)
-                end
-            end
-        end
-    end
+    forEachSpellInLines(2, nil, fn)
 end
 
 local isSpellPassive = C_Spell and C_Spell.IsSpellPassive or IsPassiveSpell
@@ -965,5 +1016,15 @@ function smb.toggleUseSlot(macro, slot, side)
     end
     if not at then slots[#slots + 1] = slot end
     settings(USE_SETTING[side or "before"])[macro.name] = #slots > 0 and slots or nil
+    rewrite(macro)
+end
+
+-- Turns a racial on or off on a side ("before" or "after") of the cast, then rewrites the macro like
+-- smb.toggleOption. The focus copy changes too, so the page must be rebuilt after.
+function smb.toggleRacial(macro, racial, side)
+    local set = settings(RACIAL_SETTING[side])
+    local racials = set[macro.name] or {}
+    racials[racial] = not racials[racial] or nil
+    set[macro.name] = next(racials) and racials or nil
     rewrite(macro)
 end

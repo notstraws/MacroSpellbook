@@ -55,7 +55,7 @@ local _, smb = ...
 --
 -- Stop casting, starting attack and using items aren't set here either: right-click a macro for its
 --   "Before Casting" and "After Casting" menus, where you tick what the macro does on that side of the cast.
---   "Stop Casting" adds /stopcasting (before the cast, it cancels your current cast). The settings cog's
+--   "Stop Casting", in the Before Casting menu only, adds /stopcasting to cancel your current cast. The settings cog's
 --   "Stop casting before spell cast" turns on the before line for every spell macro you haven't switched
 --   yourself. Warriors, Hunters and Rogues get "Start Attack" and "Start attack after spell cast" instead,
 --   for /startattack (the cog's default is the after line). Druids, Paladins and Shamans, being hybrids,
@@ -64,6 +64,9 @@ local _, smb = ...
 --   Both menus also list your equipped items with a "Use:" effect, e.g. engineering gloves and trinkets.
 --   Tick several to stack them: the macro uses each one, in the order you ticked them, on that side of the
 --   cast. The macro uses the slot, not the item, so it keeps working when you swap a trinket.
+--
+--   Both menus also list your race's racials from smb.racials below, once learned, e.g. Blood Fury for
+--   Orcs: ticked, the macro casts it on that side of the cast.
 --
 -- extraSpells: spell IDs to list with "Show Unlearned" on until learned, for spells that neither the
 --   bundled trainer data (Data/) nor your class trainer offers, e.g. quest or book spells. Use the rank 1 ID
@@ -80,3 +83,13 @@ local _, smb = ...
 
 -- Keyed by class file token (the second value of UnitClass), e.g. smb.classConfigs.WARLOCK.
 smb.classConfigs = {}
+
+-- Racials offered in every spell macro's Before Casting and After Casting menus, keyed by race file token
+-- (the second value of UnitRace, e.g. NightElf, Scourge for Undead). Each is listed only once you've
+-- learned it, so a class-specific racial only shows for that class. Add or remove names, then /reload.
+smb.racials = {
+    Orc = { "Blood Fury" },
+    Troll = { "Berserking" },
+    NightElf = { "Elune's Light" },
+    Gnome = { "Eureka!" }
+}
