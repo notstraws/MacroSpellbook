@@ -27,8 +27,9 @@ end
 -- stance the spell can be cast in first), "petAttack" (the macro also sends
 -- the pet to attack), "stopCast" (the macro stops the current cast first) or "startAttack" (the macro
 -- starts melee auto-attack after the cast). For petAttack, stopCast and startAttack, true or false overrides the
--- setting's default (optionDefault), nil follows it. "useItems" holds a list of equipment slots instead of a
--- flag: the macro uses each slot's item, in that order, before the cast. Read lazily: saved
+-- setting's default (optionDefault), nil follows it. "stopCastAfter" and "startAttackBefore" also add that line
+-- on the other side of the cast (see smb.isLineOn). "useItems" and "useItemsAfter" hold a list of equipment
+-- slots instead of a flag: the macro uses each slot's item, in that order, before (or after) the cast. Read lazily: saved
 -- variables are not loaded until ADDON_LOADED, after this file runs.
 local function settings(key)
     MacroSpellbookDB = MacroSpellbookDB or {}
@@ -126,6 +127,8 @@ local UNLISTED = math.huge -- spells in no category sort after everything else
 local PET_CLASSES = { HUNTER = true, WARLOCK = true } -- classes with a combat pet; only they get pet settings
 -- classes that fight with auto-attack; they get "startAttack" in place of "stopCast"
 local MELEE_CLASSES = { WARRIOR = true, HUNTER = true, ROGUE = true }
+-- hybrid classes that both cast and melee; they get "stopCast" and "startAttack"
+local HYBRID_CLASSES = { DRUID = true, PALADIN = true, SHAMAN = true }
 
 local config -- the player's class config with its matchers, built on first use
 
@@ -144,7 +147,8 @@ local function classConfig()
         stances = source.stances or {},
         hasStances = source.stances ~= nil,
         petAttack = hasPet,
-        startAttack = MELEE_CLASSES[class] == true,
+        stopCast = MELEE_CLASSES[class] ~= true,
+        startAttack = MELEE_CLASSES[class] == true or HYBRID_CLASSES[class] == true,
         categoryMatchers = {},
         categoryRankByName = {},
         isEnemySpell = nameMatcher(source.mouseoverEnemy),
@@ -206,16 +210,21 @@ function smb.offersPetAttack(macro)
     return smb.classOffersPetAttack() and macro.target == "harm" and not macro.custom
 end
 
--- Whether the player's class is a melee one, which swaps the "stopCast" option for "startAttack".
+-- Whether the player's class offers "stopCast": every class but a melee one.
+function smb.classOffersStopCast()
+    return classConfig().stopCast
+end
+
+-- Whether the player's class offers "startAttack": melee and hybrid classes.
 function smb.classOffersStartAttack()
     return classConfig().startAttack
 end
 
--- Every spell macro offers "stopCast", or "startAttack" for a melee class, except a stealth spell's:
--- attacking would break the stealth. A focus copy shares its spell's setting. Custom and equipment macros
--- offer neither.
+-- Every spell macro offers "stopCast" (casters and hybrids) and "startAttack" (melee and hybrids), but not
+-- "startAttack" on a stealth spell: attacking would break the stealth. A focus copy shares its spell's
+-- setting. Custom and equipment macros offer neither.
 function smb.offersStopCast(macro)
-    return not macro.custom and not macro.equipment and not smb.classOffersStartAttack()
+    return not macro.custom and not macro.equipment and smb.classOffersStopCast()
 end
 
 function smb.offersStartAttack(macro)
@@ -256,6 +265,22 @@ function smb.isOptionOn(macro, key)
     return offered and settings(key)[macro.name] == true
 end
 
+-- The side of the cast the stopCast and startAttack settings themselves (with their defaults) put the line
+-- on, and the setting that adds it on the other side too.
+local PLACEMENT = {
+    stopCast = {main = "before", other = "after", setting = "stopCastAfter"},
+    startAttack = {main = "after", other = "before", setting = "startAttackBefore"},
+}
+
+-- Whether a macro has its "stopCast" or "startAttack" line on a side ("before" or "after") of the cast;
+-- either, both or neither can be on. A focus copy shares its spell's settings.
+function smb.isLineOn(macro, key, side)
+    local placement = PLACEMENT[key]
+    if side == placement.main then return smb.isOptionOn(macro, key) end
+    local offered = key == "stopCast" and smb.offersStopCast(macro) or key == "startAttack" and smb.offersStartAttack(macro)
+    return offered and settings(placement.setting)[macro.name] == true
+end
+
 -- Whether a macro offers a way to cast other than the plain spell's (any option but stopCast and
 -- startAttack).
 function smb.hasCastOptions(macro)
@@ -263,22 +288,26 @@ function smb.hasCastOptions(macro)
         or macro.stances ~= nil
 end
 
--- Every spell macro offers using equipped items before the cast. A focus copy shares its spell's slots.
+-- Every spell macro offers using equipped items before and after the cast. A focus copy shares its spell's
+-- slots.
 function smb.offersUseItems(macro)
     return not macro.custom and not macro.equipment
 end
 
 local NO_SLOTS = {}
+-- the setting holding a macro's slots for each side of the cast
+local USE_SETTING = {before = "useItems", after = "useItemsAfter"}
 
--- The equipment slots a macro uses before its cast, in the order the player ticked them. Don't modify it.
-function smb.useItemSlots(macro)
+-- The equipment slots a macro uses on a side ("before", the default, or "after") of its cast, in the order
+-- the player ticked them. Don't modify it.
+function smb.useItemSlots(macro, side)
     if not smb.offersUseItems(macro) then return NO_SLOTS end
-    return settings("useItems")[macro.name] or NO_SLOTS
+    return settings(USE_SETTING[side or "before"])[macro.name] or NO_SLOTS
 end
 
--- A slot's place in a macro's useItemSlots, or nil when the macro doesn't use it.
-function smb.isUsingSlot(macro, slot)
-    for i, used in ipairs(smb.useItemSlots(macro)) do
+-- A slot's place in a macro's useItemSlots for a side, or nil when the macro doesn't use it there.
+function smb.isUsingSlot(macro, slot, side)
+    for i, used in ipairs(smb.useItemSlots(macro, side)) do
         if used == slot then return i end
     end
 end
@@ -434,22 +463,38 @@ local function stancesOf(name, id)
     return stances
 end
 
+-- A macro's "/stopcasting" or "/startattack" line on a side of the cast, with the spam condition on
+-- /stopcasting, or nil when it is off on that side.
+local function placedLine(macro, key, side, spam)
+    if not smb.isLineOn(macro, key, side) then return nil end
+    if key == "startAttack" then return "/startattack" end
+    return "/stopcasting" .. (spam and " [" .. spam .. "]" or "")
+end
+
+-- The line placed before the cast, with its newline, or "".
+local function beforeLine(macro, key, spam)
+    local line = placedLine(macro, key, "before", spam)
+    return line and line .. "\n" or ""
+end
+
 local function castBody(macro)
     -- the spam option adds [nochanneling:<spell>] (or [nostealth]) to every cast clause, so a press while
     -- the spell is channelling (or stealth is on) can't restart (or cancel) it; the stopCast option stops
-    -- the current cast first (but, with spam on, not this spell's own channel); the useItems slots are used
+    -- the current cast first (but, with spam on, not this spell's own channel) and the startAttack option
+    -- starts auto-attack, each when placed before the cast; the before-cast useItems slots are used
     -- next, in order; the petAttack option sends the pet at the current target before the
-    -- cast; the stance option switches stance before the cast. With items or a stance, #showtooltip names
-    -- the spell so the button doesn't show the item or the stance
+    -- cast; the stance option switches stance before the cast. With items, a stance or /startattack first,
+    -- #showtooltip names the spell so the button doesn't show the item or the stance
     local spam = smb.isOptionOn(macro, "spam") and macro.spam or nil
-    local stopCast = smb.isOptionOn(macro, "stopCast") and "/stopcasting" .. (spam and " [" .. spam .. "]" or "") .. "\n"
+    local stopCast = beforeLine(macro, "stopCast", spam)
+    local startAttack = beforeLine(macro, "startAttack", spam)
     local useLines = {}
     for i, slot in ipairs(smb.useItemSlots(macro)) do useLines[i] = "/use " .. slot .. "\n" end
     local use = table.concat(useLines)
     local stance = smb.isOptionOn(macro, "stance") and stanceLine(macro.stances) or ""
-    local namesSpell = stance ~= "" or use ~= ""
-    local header = "#showtooltip" .. (namesSpell and " " .. macro.name or "") .. "\n" .. (stopCast or "") .. use
-        .. (smb.isOptionOn(macro, "petAttack") and "/petattack\n" or "") .. stance
+    local namesSpell = stance ~= "" or use ~= "" or startAttack ~= ""
+    local header = "#showtooltip" .. (namesSpell and " " .. macro.name or "") .. "\n" .. stopCast .. startAttack
+        .. use .. (smb.isOptionOn(macro, "petAttack") and "/petattack\n" or "") .. stance
     -- "/cast <conditional> name", or "/cast name" when there is no conditional
     local function cast(conditional)
         return "/cast " .. (conditional ~= "" and conditional .. " " or "") .. macro.name
@@ -482,9 +527,17 @@ local function castBody(macro)
     return header .. cast(cond(spam))
 end
 
--- The startAttack option starts melee auto-attack as the macro's last line, after the cast.
+-- The useItemsAfter slots, in order, then the stopCast and startAttack options placed after the cast end the
+-- macro, /stopcasting before /startattack. #showtooltip still shows the spell: its /cast comes first.
 local function macroBody(macro)
-    return castBody(macro) .. (smb.isOptionOn(macro, "startAttack") and "\n/startattack" or "")
+    local body = castBody(macro)
+    for _, slot in ipairs(smb.useItemSlots(macro, "after")) do body = body .. "\n/use " .. slot end
+    local spam = smb.isOptionOn(macro, "spam") and macro.spam or nil
+    for _, key in ipairs({"stopCast", "startAttack"}) do
+        local line = placedLine(macro, key, "after", spam)
+        if line then body = body .. "\n" .. line end
+    end
+    return body
 end
 
 -- One macro per learned class spell (and unlearned one, when shown) plus the class config's custom macros,
@@ -868,34 +921,49 @@ end
 -- "stopCast" or "startAttack") and rewrites the macro if it already exists. In combat the rewrite waits until
 -- the next pickup. The focus setting adds or removes a page entry and raidRank1, spam, stance, petAttack,
 -- stopCast and startAttack also change the focus copy, so the page must be rebuilt after any of them.
-function smb.toggleOption(macro, key)
-    if DEFAULTED[key] then
-        -- stored only where it differs from the default, so the rest follow a change of default
-        local on = not smb.isOptionOn(macro, key)
-        if on == optionDefault(key) then
-            settings(key)[macro.name] = nil
-        else
-            settings(key)[macro.name] = on
-        end
+-- Stores a defaulted setting only where it differs from the default, so the rest follow a change of default.
+local function setDefaulted(macro, key, on)
+    if on == optionDefault(key) then
+        settings(key)[macro.name] = nil
     else
-        toggleSetting(key, macro.name)
+        settings(key)[macro.name] = on
     end
+end
+
+local function rewrite(macro)
     macro.body = macroBody(macro)
     if InCombatLockdown() then return end
     syncMacro(macro, GetMacroIndexByName(macro.macroName))
 end
 
--- Adds an equipment slot to the end of the macro's useItems list, or removes it, then rewrites the macro
--- like smb.toggleOption. The focus copy changes too, so the page must be rebuilt after.
-function smb.toggleUseSlot(macro, slot)
+function smb.toggleOption(macro, key)
+    if DEFAULTED[key] then
+        setDefaulted(macro, key, not smb.isOptionOn(macro, key))
+    else
+        toggleSetting(key, macro.name)
+    end
+    rewrite(macro)
+end
+
+-- Flips a macro's "stopCast" or "startAttack" line on one side ("before" or "after") of the cast, then
+-- rewrites the macro like smb.toggleOption. The focus copy changes too, so the page must be rebuilt after.
+function smb.toggleLine(macro, key, side)
+    local placement = PLACEMENT[key]
+    if side == placement.main then return smb.toggleOption(macro, key) end
+    toggleSetting(placement.setting, macro.name)
+    rewrite(macro)
+end
+
+-- Adds an equipment slot to the end of the macro's list for a side ("before", the default, or "after") of
+-- the cast, or removes it, then rewrites the macro like smb.toggleOption. The focus copy changes too, so the
+-- page must be rebuilt after.
+function smb.toggleUseSlot(macro, slot, side)
     local slots = {}
-    local at = smb.isUsingSlot(macro, slot)
-    for i, used in ipairs(smb.useItemSlots(macro)) do
+    local at = smb.isUsingSlot(macro, slot, side)
+    for i, used in ipairs(smb.useItemSlots(macro, side)) do
         if i ~= at then slots[#slots + 1] = used end
     end
     if not at then slots[#slots + 1] = slot end
-    settings("useItems")[macro.name] = #slots > 0 and slots or nil
-    macro.body = macroBody(macro)
-    if InCombatLockdown() then return end
-    syncMacro(macro, GetMacroIndexByName(macro.macroName))
+    settings(USE_SETTING[side or "before"])[macro.name] = #slots > 0 and slots or nil
+    rewrite(macro)
 end
