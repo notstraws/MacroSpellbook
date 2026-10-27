@@ -42,12 +42,25 @@ local function showMacroMenu(button)
         if macro.stances then addOption("Switch To " .. macro.stances[1], "stance") end
         if macro.target then addOption("Cast On Focus", "focus") end
         if smb.offersPetAttack(macro) then addOption("Enable Pet Attack", "petAttack") end
-        -- one submenu per side of the cast: /stopcasting, /startattack and the equipped on-use items, each
-        -- on either side, both or neither
+        -- one submenu per side of the cast: /startattack, the race's racials and the equipped on-use items,
+        -- each on either side, both or neither, and /stopcasting before only
         local function addSide(side)
+            -- each line as {label, isOn, toggle}
             local lines = {}
-            if smb.offersStopCast(macro) then lines[#lines + 1] = {"Stop Casting", "stopCast"} end
-            if smb.offersStartAttack(macro) then lines[#lines + 1] = {"Start Attack", "startAttack"} end
+            local function addLine(key, label)
+                lines[#lines + 1] = {label,
+                    function() return smb.isLineOn(macro, key, side) end,
+                    function() smb.toggleLine(macro, key, side) end}
+            end
+            if smb.offersStartAttack(macro) then addLine("startAttack", "Start Attack") end
+            if side == "before" and smb.offersStopCast(macro) then addLine("stopCast", "Stop Casting") end
+            if smb.offersUseItems(macro) then
+                for _, racial in ipairs(smb.offeredRacials()) do
+                    lines[#lines + 1] = {"Racial: " .. racial,
+                        function() return smb.isRacialOn(macro, racial, side) end,
+                        function() smb.toggleRacial(macro, racial, side) end}
+                end
+            end
             -- the equipped on-use items, plus any slot already ticked so it can be unticked after a gear swap
             local slots, listed = {}, {}
             if smb.offersUseItems(macro) then
@@ -59,15 +72,15 @@ local function showMacroMenu(button)
                 end
             end
             if #lines == 0 and #slots == 0 then return end
-            local submenu = rootDescription:CreateButton(side == "before" and "Before Casting" or "After Casting")
+            local title = side == "before" and "Before Casting" or "After Casting"
+            local submenu = rootDescription:CreateButton(title)
+            submenu:CreateTitle(title)
             for _, line in ipairs(lines) do
-                local label, key = line[1], line[2]
-                submenu:CreateCheckbox(label,
-                    function() return smb.isLineOn(macro, key, side) end,
-                    function()
-                        smb.toggleLine(macro, key, side)
-                        refresh(button:GetParent()) -- rewrites the focus copy too
-                    end)
+                local label, isOn, toggle = line[1], line[2], line[3]
+                submenu:CreateCheckbox(label, isOn, function()
+                    toggle()
+                    refresh(button:GetParent()) -- rewrites the focus copy too
+                end)
             end
             if #lines > 0 and #slots > 0 then submenu:CreateDivider() end
             for _, slot in ipairs(slots) do
@@ -273,6 +286,9 @@ function setMacro(button, macro, bars)
         button.subText:SetTextColor(unpack(MOUSEOVER_COLOR))
     elseif smb.useItemSlots(macro, "before")[1] or smb.useItemSlots(macro, "after")[1] then
         button.subText:SetText("Use items")
+        button.subText:SetTextColor(unpack(MOUSEOVER_COLOR))
+    elseif smb.hasRacialOn(macro) then
+        button.subText:SetText("Racial")
         button.subText:SetTextColor(unpack(MOUSEOVER_COLOR))
     elseif smb.isOptionOn(macro, "petAttack") then
         button.subText:SetText("Pet attack")
