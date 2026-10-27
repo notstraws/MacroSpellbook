@@ -23,7 +23,7 @@ local function showMacroMenu(button)
                 function()
                     smb.toggleOption(macro, key)
                     if key == "focus" or key == "petAttack" or key == "raidRank1" or key == "spam"
-                            or key == "stance" or key == "stopCast" or key == "startAttack" then
+                            or key == "stance" then
                         refresh(button:GetParent()) -- adds, removes or rewrites the focus copy
                     elseif button.macro == macro then
                         setMacro(button, macro)
@@ -42,33 +42,46 @@ local function showMacroMenu(button)
         if macro.stances then addOption("Switch To " .. macro.stances[1], "stance") end
         if macro.target then addOption("Cast On Focus", "focus") end
         if smb.offersPetAttack(macro) then addOption("Enable Pet Attack", "petAttack") end
-        if smb.offersStartAttack(macro) then
-            addOption("Start Attack After Casting", "startAttack")
-        elseif smb.offersStopCast(macro) then
-            addOption("Stop Casting Before Casting", "stopCast")
-        end
-        if smb.offersUseItems(macro) then
+        -- one submenu per side of the cast: /stopcasting, /startattack and the equipped on-use items, each
+        -- on either side, both or neither
+        local function addSide(side)
+            local lines = {}
+            if smb.offersStopCast(macro) then lines[#lines + 1] = {"Stop Casting", "stopCast"} end
+            if smb.offersStartAttack(macro) then lines[#lines + 1] = {"Start Attack", "startAttack"} end
             -- the equipped on-use items, plus any slot already ticked so it can be unticked after a gear swap
             local slots, listed = {}, {}
-            for _, usable in ipairs(smb.usableSlots()) do
-                slots[#slots + 1], listed[usable.slot] = usable.slot, true
-            end
-            for _, slot in ipairs(smb.useItemSlots(macro)) do
-                if not listed[slot] then slots[#slots + 1] = slot end
-            end
-            if #slots > 0 then
-                local submenu = rootDescription:CreateButton("Use Before Casting")
-                for _, slot in ipairs(slots) do
-                    local at = smb.isUsingSlot(macro, slot)
-                    submenu:CreateCheckbox(smb.slotLabel(slot) .. (at and " (" .. at .. ")" or ""),
-                        function() return smb.isUsingSlot(macro, slot) ~= nil end,
-                        function()
-                            smb.toggleUseSlot(macro, slot)
-                            refresh(button:GetParent()) -- rewrites the focus copy too
-                        end)
+            if smb.offersUseItems(macro) then
+                for _, usable in ipairs(smb.usableSlots()) do
+                    slots[#slots + 1], listed[usable.slot] = usable.slot, true
+                end
+                for _, slot in ipairs(smb.useItemSlots(macro, side)) do
+                    if not listed[slot] then slots[#slots + 1] = slot end
                 end
             end
+            if #lines == 0 and #slots == 0 then return end
+            local submenu = rootDescription:CreateButton(side == "before" and "Before Casting" or "After Casting")
+            for _, line in ipairs(lines) do
+                local label, key = line[1], line[2]
+                submenu:CreateCheckbox(label,
+                    function() return smb.isLineOn(macro, key, side) end,
+                    function()
+                        smb.toggleLine(macro, key, side)
+                        refresh(button:GetParent()) -- rewrites the focus copy too
+                    end)
+            end
+            if #lines > 0 and #slots > 0 then submenu:CreateDivider() end
+            for _, slot in ipairs(slots) do
+                local at = smb.isUsingSlot(macro, slot, side)
+                submenu:CreateCheckbox(smb.slotLabel(slot) .. (at and " (" .. at .. ")" or ""),
+                    function() return smb.isUsingSlot(macro, slot, side) ~= nil end,
+                    function()
+                        smb.toggleUseSlot(macro, slot, side)
+                        refresh(button:GetParent()) -- rewrites the focus copy too
+                    end)
+            end
         end
+        addSide("before")
+        addSide("after")
     end)
 end
 
@@ -258,7 +271,7 @@ function setMacro(button, macro, bars)
     elseif smb.isOptionOn(macro, "stance") then
         button.subText:SetText("Stance")
         button.subText:SetTextColor(unpack(MOUSEOVER_COLOR))
-    elseif smb.useItemSlots(macro)[1] then
+    elseif smb.useItemSlots(macro, "before")[1] or smb.useItemSlots(macro, "after")[1] then
         button.subText:SetText("Use items")
         button.subText:SetTextColor(unpack(MOUSEOVER_COLOR))
     elseif smb.isOptionOn(macro, "petAttack") then
@@ -440,14 +453,15 @@ local function buildPage(page)
                 refresh(page) -- rewrites the macros that follow the default
             end)
         end
+        if smb.classOffersStopCast() then
+            rootDescription:CreateCheckbox("Stop casting before spell cast", smb.stopsCastingByDefault, function()
+                smb.setStopsCastingByDefault(not smb.stopsCastingByDefault())
+                refresh(page) -- rewrites the macros that follow the default
+            end)
+        end
         if smb.classOffersStartAttack() then
             rootDescription:CreateCheckbox("Start attack after spell cast", smb.startsAttackByDefault, function()
                 smb.setStartsAttackByDefault(not smb.startsAttackByDefault())
-                refresh(page) -- rewrites the macros that follow the default
-            end)
-        else
-            rootDescription:CreateCheckbox("Stop casting before spell cast", smb.stopsCastingByDefault, function()
-                smb.setStopsCastingByDefault(not smb.stopsCastingByDefault())
                 refresh(page) -- rewrites the macros that follow the default
             end)
         end

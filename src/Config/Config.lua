@@ -53,16 +53,17 @@ local _, smb = ...
 --   at your target. The settings cog's "Enable Pet attacks before spell cast" turns it on for every such
 --   macro you haven't switched yourself.
 --
--- Stop casting is not set here either: every spell offers "Stop Casting Before Casting" (right-click a macro): the
---   macro starts with /stopcasting, cancelling your current cast. The settings cog's "Stop casting before
---   spell cast" turns it on for every spell macro you haven't switched yourself. Warriors, Hunters and
---   Rogues get "Start Attack After Casting" and "Start attack after spell cast" instead, which end the
---   macro with /startattack.
+-- Stop casting, starting attack and using items aren't set here either: right-click a macro for its
+--   "Before Casting" and "After Casting" menus, where you tick what the macro does on that side of the cast.
+--   "Stop Casting" adds /stopcasting (before the cast, it cancels your current cast). The settings cog's
+--   "Stop casting before spell cast" turns on the before line for every spell macro you haven't switched
+--   yourself. Warriors, Hunters and Rogues get "Start Attack" and "Start attack after spell cast" instead,
+--   for /startattack (the cog's default is the after line). Druids, Paladins and Shamans, being hybrids,
+--   get both.
 --
--- Using items isn't set here either: every spell offers "Use Before Casting" (right-click a macro), listing
---   your equipped items with a "Use:" effect, e.g. engineering gloves and trinkets. Tick several to stack
---   them: the macro uses each one, in the order you ticked them, before the cast. The macro uses the slot,
---   not the item, so it keeps working when you swap a trinket.
+--   Both menus also list your equipped items with a "Use:" effect, e.g. engineering gloves and trinkets.
+--   Tick several to stack them: the macro uses each one, in the order you ticked them, on that side of the
+--   cast. The macro uses the slot, not the item, so it keeps working when you swap a trinket.
 --
 -- extraSpells: spell IDs to list with "Show Unlearned" on until learned, for spells that neither the
 --   bundled trainer data (Data/) nor your class trainer offers, e.g. quest or book spells. Use the rank 1 ID
