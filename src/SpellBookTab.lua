@@ -16,7 +16,8 @@ local function showMacroMenu(button)
     local macro = button.macro
     if not smb.hasOptions(macro) then return end
     MenuUtil.CreateContextMenu(button, function(_, rootDescription)
-        rootDescription:CreateTitle(macro.name)
+        -- an equipment macro's menu is titled by its one section instead
+        if not macro.equipment then rootDescription:CreateTitle(macro.name) end
         local function addOption(label, key)
             rootDescription:CreateCheckbox(label,
                 function() return smb.isOptionOn(macro, key) end,
@@ -32,6 +33,12 @@ local function showMacroMenu(button)
         end
         if macro.focus then
             addOption("Cast On Focus", "focus")
+            return
+        end
+        if macro.equipment then
+            rootDescription:CreateTitle("Before Using")
+            addOption("Stop Attacking", "equipStopAttack")
+            addOption("Stop Casting", "equipStopCast")
             return
         end
         if macro.target then addOption("Cast On Mouseover", "mouseover") end
@@ -219,11 +226,8 @@ local function createMacroButton(parent)
     end)
     button:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        -- an equipment macro shows its item, with the item's Use: line
-        if not (self.macro.equipment and GameTooltip:SetInventoryItem("player", self.macro.slot)) then
-            GameTooltip:SetText(self.macro.name)
-            GameTooltip:AddLine(self.macro.body, 1, 1, 1, true)
-        end
+        GameTooltip:SetText(self.macro.name)
+        GameTooltip:AddLine(self.macro.body, 1, 1, 1, true)
         if self.macro.unlearned then
             GameTooltip:AddLine("Not learned yet.", 1, 0.1, 0.1, true)
         elseif self.glow:IsShown() then

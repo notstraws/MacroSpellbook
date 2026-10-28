@@ -30,7 +30,9 @@ end
 -- setting's default (optionDefault), nil follows it. "startAttackBefore" also adds /startattack before the
 -- cast (see smb.isLineOn); an old "stopCastAfter" is ignored. "useItems" and "useItemsAfter" hold a list of equipment
 -- slots instead of a flag: the macro uses each slot's item, in that order, before (or after) the cast. "racials" and
--- "racialsAfter" hold a set of racial names: the macro casts each one before (or after) the cast. Read lazily: saved
+-- "racialsAfter" hold a set of racial names: the macro casts each one before (or after) the cast.
+-- "equipStopAttack" and "equipStopCast" are keyed by inventory slot rather than spell name: the equipment macro
+-- for that slot starts with /stopattack (or /stopcasting) before using the item. Read lazily: saved
 -- variables are not loaded until ADDON_LOADED, after this file runs.
 local function settings(key)
     MacroSpellbookDB = MacroSpellbookDB or {}
@@ -91,6 +93,9 @@ end
 
 -- The settings with a default; each spell macro stores one only where it differs from the default.
 local DEFAULTED = { petAttack = true, stopCast = true, startAttack = true }
+
+-- The equipment macros' settings, keyed by the macro's slot (see settings).
+local EQUIPMENT_OPTIONS = { equipStopAttack = true, equipStopCast = true }
 
 -- The default of a setting that has one ("petAttack", "stopCast" or "startAttack"), or nil.
 local function optionDefault(key)
@@ -233,8 +238,12 @@ function smb.offersStartAttack(macro)
 end
 
 -- Whether a macro offers an option ("mouseover", "cursor", "focus", "pet", "raidRank1", "spam", "stance",
--- "petAttack", "stopCast" or "startAttack") and the player turned it on.
+-- "petAttack", "stopCast" or "startAttack", or an equipment macro's "equipStopAttack" or "equipStopCast") and
+-- the player turned it on.
 function smb.isOptionOn(macro, key)
+    if EQUIPMENT_OPTIONS[key] then
+        return macro.equipment == true and settings(key)[macro.slot] == true
+    end
     if DEFAULTED[key] then
         local offered
         if key == "petAttack" then
@@ -386,10 +395,11 @@ function smb.hasRacialOn(macro)
     return racialsOn(macro, "before")[1] ~= nil or racialsOn(macro, "after")[1] ~= nil
 end
 
--- Whether a macro has an options menu: every spell macro does, for stopCast or startAttack.
+-- Whether a macro has an options menu: every spell macro does, for stopCast or startAttack, and every
+-- equipment macro, for equipStopAttack and equipStopCast.
 function smb.hasOptions(macro)
     return smb.hasCastOptions(macro) or smb.offersStopCast(macro) or smb.offersStartAttack(macro)
-        or smb.offersUseItems(macro)
+        or smb.offersUseItems(macro) or macro.equipment == true
 end
 
 -- A macro conditional joining the given conditions (nil or "" ones are skipped) behind the always-present
@@ -603,10 +613,18 @@ local function castBody(macro)
     return header .. cast(cond(spam))
 end
 
+-- An equipment macro uses its slot, after /stopattack and /stopcasting when those options are on. A bare
+-- #showtooltip skips them and shows the item.
+local function equipmentBody(macro)
+    return "#showtooltip\n" .. (smb.isOptionOn(macro, "equipStopAttack") and "/stopattack\n" or "")
+        .. (smb.isOptionOn(macro, "equipStopCast") and "/stopcasting\n" or "") .. "/use " .. macro.slot
+end
+
 -- The racials cast after the cast, then the useItemsAfter slots, in order, then the startAttack option
 -- placed after the cast end the macro.
 -- #showtooltip still shows the spell: its /cast comes first.
 local function macroBody(macro)
+    if macro.equipment then return equipmentBody(macro) end
     local body = castBody(macro)
     for _, racial in ipairs(racialsOn(macro, "after")) do body = body .. "\n/cast " .. racial end
     for _, slot in ipairs(smb.useItemSlots(macro, "after")) do body = body .. "\n/use " .. slot end
@@ -741,11 +759,11 @@ local function hasUseEffect(slot, link)
     return false
 end
 
--- A macro that uses whatever is in an equipment slot, so it keeps working when the item is swapped. It has
--- no options menu.
+-- A macro that uses whatever is in an equipment slot, so it keeps working when the item is swapped. Its menu
+-- offers only equipStopAttack and equipStopCast.
 local function makeEquipmentMacro(slot, link, categoryRank)
     local label = SLOT_LABELS[slot]
-    return {
+    local macro = {
         name = link:match("%[(.-)%]") or label,
         equipment = true,
         slot = slot,
@@ -757,8 +775,9 @@ local function makeEquipmentMacro(slot, link, categoryRank)
         macroName = ("Use " .. label):sub(1, MAX_MACRO_NAME),
         macroIcon = ICON_QUESTION_MARK,
         icon = GetInventoryItemTexture("player", slot) or ICON_QUESTION_MARK,
-        body = "#showtooltip\n/use " .. slot,
     }
+    macro.body = equipmentBody(macro)
+    return macro
 end
 
 -- The equipped items with a "Use:" effect, in slot order, as {slot = 13, link = ...}.
@@ -1094,8 +1113,8 @@ function smb.isOnActionBars(macro, bars)
 end
 
 -- Flips a setting ("mouseover", "cursor", "focus", "pet", "raidRank1", "spam", "stance", "petAttack",
--- "stopCast" or "startAttack") and rewrites the macro if it already exists. In combat the rewrite waits until
--- the next pickup. The focus setting adds or removes a page entry and raidRank1, spam, stance, petAttack,
+-- "stopCast" or "startAttack", or "equipStopAttack" or "equipStopCast" on an equipment macro) and rewrites
+-- the macro if it already exists. In combat the rewrite waits until the next pickup. The focus setting adds or removes a page entry and raidRank1, spam, stance, petAttack,
 -- stopCast and startAttack also change the focus copy, so the page must be rebuilt after any of them.
 -- Stores a defaulted setting only where it differs from the default, so the rest follow a change of default.
 local function setDefaulted(macro, key, on)
@@ -1113,7 +1132,9 @@ local function rewrite(macro)
 end
 
 function smb.toggleOption(macro, key)
-    if DEFAULTED[key] then
+    if EQUIPMENT_OPTIONS[key] then
+        toggleSetting(key, macro.slot)
+    elseif DEFAULTED[key] then
         setDefaulted(macro, key, not smb.isOptionOn(macro, key))
     else
         toggleSetting(key, macro.name)
