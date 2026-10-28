@@ -4,7 +4,7 @@ local _, smb = ...
 smb.classConfigs.DRUID = {
     categories = {
         { name = "Custom" },
-        { name = "Damage", spells = {
+        { name = "Damage", cooldownSteps = true, spells = {
             "Wrath",
             "Starfire",
             "Moonfire",
@@ -25,7 +25,7 @@ smb.classConfigs.DRUID = {
             "Faerie Fire",
             "Faerie Fire (Feral)",
         } },
-        { name = "Healing", spells = {
+        { name = "Healing", cooldownSteps = true, spells = {
             "Healing Touch",
             "Regrowth",
             "Rejuvenation",
@@ -63,7 +63,7 @@ smb.classConfigs.DRUID = {
             "Aquatic Form",
             "Moonkin Form",
         } },
-        { name = "Buffs & Defence", spells = {
+        { name = "Buffs & Defence", sequence = true, spells = {
             "Mark of the Wild",
             "Gift of the Wild",
             "Thorns",
@@ -105,6 +105,11 @@ smb.classConfigs.DRUID = {
 
     cursor = {
         "Hurricane",
+    },
+
+    cooldowns = {
+        "Nature's Swiftness",
+        "Berserk",
     },
 
     channeled = {

@@ -4,7 +4,7 @@ local _, smb = ...
 smb.classConfigs.HUNTER = {
     categories = {
         { name = "Custom" },
-        { name = "Damage", spells = {
+        { name = "Damage", cooldownSteps = true, spells = {
             "Arcane Shot",
             "Aimed Shot",
             "Multi-Shot",
@@ -35,7 +35,7 @@ smb.classConfigs.HUNTER = {
             "Flare",
             "Eagle Eye",
         } },
-        { name = "Buffs & Defence", spells = {
+        { name = "Buffs & Defence", sequence = true, spells = {
             "Aspect of *",
             "Trueshot Aura",
             "Rapid Fire",
@@ -80,6 +80,11 @@ smb.classConfigs.HUNTER = {
     cursor = {
         "Volley",
         "Flare",
+    },
+
+    cooldowns = {
+        "Rapid Fire",
+        "Bestial Wrath",
     },
 
     channeled = {

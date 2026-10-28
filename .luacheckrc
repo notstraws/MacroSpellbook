@@ -18,7 +18,7 @@ read_globals = {
 
 	-- Namespaces
 	"C_Item", "C_Spell", "C_SpellBook", "C_Texture", "C_Timer",
-	"C_TooltipInfo", "C_Trainer", "Enum", "EventRegistry", "EventUtil", "InputUtil", "MenuUtil",
+	"C_TooltipInfo", "C_Trainer", "Enum", "EventRegistry", "EventUtil", "InputUtil", "MenuResponse", "MenuUtil",
 
 	-- Functions
 	"ClearCursor", "CreateFrame", "CreateMacro", "DeleteMacro", "EditMacro", "GetActionInfo", "GetActionText",

@@ -4,7 +4,7 @@ local _, smb = ...
 smb.classConfigs.ROGUE = {
     categories = {
         { name = "Custom" },
-        { name = "Damage", spells = {
+        { name = "Damage", cooldownSteps = true, spells = {
             "Sinister Strike",
             "Backstab",
             "Mutilate",
@@ -37,7 +37,7 @@ smb.classConfigs.ROGUE = {
             "Disarm Trap",
             "Poisons",
         } },
-        { name = "Buffs & Defence", spells = {
+        { name = "Buffs & Defence", sequence = true, spells = {
             "Evasion",
             "Cold Blood",
             "Blade Flurry",
@@ -59,6 +59,12 @@ smb.classConfigs.ROGUE = {
 
     cursor = {
         "Distract",
+    },
+
+    cooldowns = {
+        "Cold Blood",
+        "Blade Flurry",
+        "Adrenaline Rush",
     },
 
     channeled = {},
