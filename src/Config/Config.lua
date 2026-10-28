@@ -68,6 +68,10 @@ local _, smb = ...
 --   Both menus also list your race's racials from smb.racials below, once learned, e.g. Blood Fury for
 --   Orcs: ticked, the macro casts it on that side of the cast.
 --
+--   An Equipment section macro's right-click menu lists "Stop Attacking" and "Stop Casting" under a
+--   "Before Using" heading: ticked, the macro starts with /stopattack or /stopcasting before using the item. They are per slot and
+--   shared by every character, like the equipment macros themselves.
+--
 -- extraSpells: spell IDs to list with "Show Unlearned" on until learned, for spells that neither the
 --   bundled trainer data (Data/) nor your class trainer offers, e.g. quest or book spells. Use the rank 1 ID
 --   (the number in the spell's Wowhead URL).
