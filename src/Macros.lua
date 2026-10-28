@@ -32,8 +32,9 @@ end
 -- slots instead of a flag: the macro uses each slot's item, in that order, before (or after) the cast. "racials" and
 -- "racialsAfter" hold a set of racial names: the macro casts each one before (or after) the cast.
 -- "equipStopAttack" and "equipStopCast" are keyed by inventory slot rather than spell name: the equipment macro
--- for that slot starts with /stopattack (or /stopcasting) before using the item. Read lazily: saved
--- variables are not loaded until ADDON_LOADED, after this file runs.
+-- for that slot starts with /stopattack (or /stopcasting) before using the item. "modifiers" holds a table
+-- per spell name, {shift = name, ctrl = name, alt = name}: the macro casts that spell while the key is held,
+-- on the focus target when shiftFocus (ctrlFocus, altFocus) is true (see smb.modifierSpell). Read lazily: saved variables are not loaded until ADDON_LOADED, after this file runs.
 local function settings(key)
     MacroSpellbookDB = MacroSpellbookDB or {}
     MacroSpellbookDB[key] = MacroSpellbookDB[key] or {}
@@ -395,6 +396,32 @@ function smb.hasRacialOn(macro)
     return racialsOn(macro, "before")[1] ~= nil or racialsOn(macro, "after")[1] ~= nil
 end
 
+-- The modifier keys a spell macro can cast another spell with, in the order their clauses are tried: with
+-- several keys held, the first wins.
+smb.MODIFIERS = {"shift", "ctrl", "alt"}
+
+-- Every spell macro but a focus copy offers a spell for each modifier key.
+function smb.offersModifiers(macro)
+    return not macro.custom and not macro.equipment and not macro.focus
+end
+
+-- The spell a macro casts while a modifier key ("shift", "ctrl" or "alt") is held, or nil, and whether it
+-- casts it on the focus target, like that spell's focus copy.
+function smb.modifierSpell(macro, mod)
+    if not smb.offersModifiers(macro) then return nil, false end
+    local spells = settings("modifiers")[macro.name]
+    if not (spells and spells[mod]) then return nil, false end
+    return spells[mod], spells[mod .. "Focus"] == true
+end
+
+-- Whether a macro has a spell set for any modifier key.
+function smb.hasModifierOn(macro)
+    for _, mod in ipairs(smb.MODIFIERS) do
+        if smb.modifierSpell(macro, mod) then return true end
+    end
+    return false
+end
+
 -- Whether a macro has an options menu: every spell macro does, for stopCast or startAttack, and every
 -- equipment macro, for equipStopAttack and equipStopCast.
 function smb.hasOptions(macro)
@@ -416,15 +443,46 @@ local function cond(spam, ...)
 end
 
 -- A /cast of name that tries each target conditional in turn ("" for none), with a rank 1 cast in a raid
--- group before each one.
-local function raidRank1Cast(name, targets, spam)
+-- group before each one. prefix ("" for none) goes before the clauses: the modifier clauses.
+local function raidRank1Cast(name, targets, spam, prefix)
     local clauses = {}
     for _, target in ipairs(targets) do
         clauses[#clauses + 1] = cond(spam, target, "group:raid") .. " " .. name .. "(Rank 1)"
         local plain = cond(spam, target)
         clauses[#clauses + 1] = (plain ~= "" and plain .. " " or "") .. name
     end
-    return "/cast " .. table.concat(clauses, "; ")
+    return "/cast " .. prefix .. table.concat(clauses, "; ")
+end
+
+-- The page's spell macros by spell name (not focus copies, custom or equipment macros), for the modifier
+-- clauses. Rebuilt with smb.macros.
+smb.macroByName = {}
+
+-- The clauses that cast a macro's modifier spells, each followed by "; ", ready to go before its own, e.g.
+-- "[mod:shift] Fear; [mod:alt,@mouseover,help,nodead][mod:alt] Flash Heal; ", or "". Each spell is cast the
+-- way its own page macro targets: at the mouseover or the cursor when that option is on there. A focus
+-- pick casts like the spell's focus copy, on the focus target or else the target, but without switching
+-- target back after. A spell that isn't learned is left out, keeping its setting. So is a focus pick whose
+-- spell has no focus copy, which only old saved data can hold: removing the copy clears its picks.
+local function modifierClauses(macro)
+    local clauses = {}
+    for _, mod in ipairs(smb.MODIFIERS) do
+        local name, onFocus = smb.modifierSpell(macro, mod)
+        local other = smb.macroByName[name or ""]
+        if other and not other.unlearned and (not onFocus or smb.isOptionOn(other, "focus")) then
+            local held = "[mod:" .. mod
+            local conditional = held .. "]"
+            if onFocus then
+                conditional = held .. ",@focus," .. other.target .. ",nodead]" .. conditional
+            elseif smb.isOptionOn(other, "cursor") then
+                conditional = held .. ",@cursor]"
+            elseif smb.isOptionOn(other, "mouseover") then
+                conditional = held .. ",@mouseover," .. other.target .. ",nodead]" .. conditional
+            end
+            clauses[#clauses + 1] = conditional .. " " .. other.name .. "; "
+        end
+    end
+    return table.concat(clauses)
 end
 
 -- A focus copy switches back to the previous target after the cast.
@@ -581,9 +639,11 @@ local function castBody(macro)
     local namesSpell = stance ~= "" or use ~= "" or startAttack ~= ""
     local header = "#showtooltip" .. (namesSpell and " " .. macro.name or "") .. "\n" .. stopCast .. startAttack
         .. use .. (smb.isOptionOn(macro, "petAttack") and "/petattack\n" or "") .. stance
+    -- the modifier spells' clauses go first, so a held key wins over the macro's own
+    local mods = modifierClauses(macro)
     -- "/cast <conditional> name", or "/cast name" when there is no conditional
     local function cast(conditional)
-        return "/cast " .. (conditional ~= "" and conditional .. " " or "") .. macro.name
+        return "/cast " .. mods .. (conditional ~= "" and conditional .. " " or "") .. macro.name
     end
     if smb.isOptionOn(macro, "raidRank1") then
         local targets = {""}
@@ -592,7 +652,7 @@ local function castBody(macro)
         elseif smb.isOptionOn(macro, "mouseover") then
             targets = {"@mouseover," .. macro.target .. ",nodead", ""}
         end
-        return header .. raidRank1Cast(macro.name, targets, spam) .. (macro.focus and FOCUS_FOOTER or "")
+        return header .. raidRank1Cast(macro.name, targets, spam, mods) .. (macro.focus and FOCUS_FOOTER or "")
     end
     if macro.focus then
         return header .. cast(cond(spam, "@focus," .. macro.target .. ",nodead") .. "[" .. (spam or "") .. "]")
@@ -601,7 +661,7 @@ local function castBody(macro)
     if smb.isOptionOn(macro, "pet") then
         -- [pet:X] matches the pet's creature family, so another demon being out still summons this one
         local family = macro.name:match("^Summon (.+)$") or macro.name
-        return header .. "/cast " .. cond(spam, "pet:" .. family) .. " " .. macro.petAbility .. "; "
+        return header .. "/cast " .. mods .. cond(spam, "pet:" .. family) .. " " .. macro.petAbility .. "; "
             .. (spam and cond(spam) .. " " or "") .. macro.name
     end
     if smb.isOptionOn(macro, "cursor") then
@@ -631,6 +691,13 @@ local function macroBody(macro)
     local line = placedLine(macro, "startAttack", "after")
     if line then body = body .. "\n" .. line end
     return body
+end
+
+-- Sets a page macro's body, and tooLong when it is over WoW's limit: such a macro is never created or
+-- rewritten (see smb.pickupMacro and syncMacro).
+local function setBody(macro)
+    macro.body = macroBody(macro)
+    macro.tooLong = #macro.body > MAX_MACRO_BODY
 end
 
 -- One macro per learned class spell (and unlearned one, when shown) plus the class config's custom macros,
@@ -666,8 +733,7 @@ local function makeMacro(name, icon, unlearned, id)
         macroIcon = ICON_QUESTION_MARK,
         icon = icon or ICON_QUESTION_MARK,
     }
-    macro.body = macroBody(macro)
-    return macro
+    return macro -- smb.collectMacros sets the body once every macro exists
 end
 
 -- A copy of a spell macro that casts on the focus target, falling back to the current target. Its menu
@@ -679,7 +745,6 @@ local function makeFocusMacro(macro)
     copy.cursor = false
     copy.petAbility = nil
     copy.macroName = macro.name:sub(1, MAX_MACRO_NAME - #FOCUS_SUFFIX) .. FOCUS_SUFFIX
-    copy.body = macroBody(copy)
     return copy
 end
 
@@ -776,7 +841,6 @@ local function makeEquipmentMacro(slot, link, categoryRank)
         macroIcon = ICON_QUESTION_MARK,
         icon = GetInventoryItemTexture("player", slot) or ICON_QUESTION_MARK,
     }
-    macro.body = equipmentBody(macro)
     return macro
 end
 
@@ -917,11 +981,19 @@ function smb.collectMacros()
         if a.name ~= b.name then return a.name < b.name end
         return not a.focus and b.focus == true
     end)
+    -- a body can name other spell macros (its modifier spells), so the bodies come once they all exist
+    wipe(smb.macroByName)
+    for _, macro in ipairs(smb.macros) do
+        if not (macro.custom or macro.equipment or macro.focus) then smb.macroByName[macro.name] = macro end
+    end
+    for _, macro in ipairs(smb.macros) do
+        if not macro.custom then setBody(macro) end
+    end
 end
 
 -- Rewrites the WoW macro at index if its body differs from the page's. Index 0 means it does not exist.
 local function syncMacro(macro, index)
-    if index ~= 0 and select(3, GetMacroInfo(index)) ~= macro.body then
+    if index ~= 0 and not macro.tooLong and select(3, GetMacroInfo(index)) ~= macro.body then
         EditMacro(index, nil, nil, macro.body)
     end
 end
@@ -959,6 +1031,11 @@ end
 function smb.pickupMacro(macro)
     if InCombatLockdown() then
         UIErrorsFrame:AddMessage(ERR_NOT_IN_COMBAT, 1, 0.1, 0.1)
+        return
+    end
+    if macro.tooLong then
+        UIErrorsFrame:AddMessage(addonName .. ": " .. macro.name .. " is " .. #macro.body
+            .. " characters; macros allow " .. MAX_MACRO_BODY .. ".", 1, 0.1, 0.1)
         return
     end
     local index = GetMacroIndexByName(macro.macroName)
@@ -1115,7 +1192,9 @@ end
 -- Flips a setting ("mouseover", "cursor", "focus", "pet", "raidRank1", "spam", "stance", "petAttack",
 -- "stopCast" or "startAttack", or "equipStopAttack" or "equipStopCast" on an equipment macro) and rewrites
 -- the macro if it already exists. In combat the rewrite waits until the next pickup. The focus setting adds or removes a page entry and raidRank1, spam, stance, petAttack,
--- stopCast and startAttack also change the focus copy, so the page must be rebuilt after any of them.
+-- stopCast and startAttack also change the focus copy, and mouseover and cursor the macros that cast this
+-- spell with a modifier key, so the page must be rebuilt after any of them. Turning focus off also clears
+-- the modifier picks that cast the spell on the focus target.
 -- Stores a defaulted setting only where it differs from the default, so the rest follow a change of default.
 local function setDefaulted(macro, key, on)
     if on == optionDefault(key) then
@@ -1126,7 +1205,7 @@ local function setDefaulted(macro, key, on)
 end
 
 local function rewrite(macro)
-    macro.body = macroBody(macro)
+    setBody(macro)
     if InCombatLockdown() then return end
     syncMacro(macro, GetMacroIndexByName(macro.macroName))
 end
@@ -1138,6 +1217,18 @@ function smb.toggleOption(macro, key)
         setDefaulted(macro, key, not smb.isOptionOn(macro, key))
     else
         toggleSetting(key, macro.name)
+    end
+    -- turning focus off removes the focus copy, so the modifier picks casting it go too
+    if key == "focus" and not smb.isOptionOn(macro, "focus") then
+        local set = settings("modifiers")
+        for name, spells in pairs(set) do
+            for _, mod in ipairs(smb.MODIFIERS) do
+                if spells[mod] == macro.name and spells[mod .. "Focus"] then
+                    spells[mod], spells[mod .. "Focus"] = nil, nil
+                end
+            end
+            if not next(spells) then set[name] = nil end
+        end
     end
     rewrite(macro)
 end
@@ -1172,5 +1263,16 @@ function smb.toggleRacial(macro, racial, side)
     local racials = set[macro.name] or {}
     racials[racial] = not racials[racial] or nil
     set[macro.name] = next(racials) and racials or nil
+    rewrite(macro)
+end
+
+-- Sets the spell a macro casts while a modifier key ("shift", "ctrl" or "alt") is held, on the focus target
+-- when onFocus, or clears it with nil, then rewrites the macro like smb.toggleOption.
+function smb.setModifierSpell(macro, mod, name, onFocus)
+    local set = settings("modifiers")
+    local spells = set[macro.name] or {}
+    spells[mod] = name
+    spells[mod .. "Focus"] = name and onFocus or nil
+    set[macro.name] = next(spells) and spells or nil
     rewrite(macro)
 end

@@ -72,6 +72,17 @@ local _, smb = ...
 --   "Before Using" heading: ticked, the macro starts with /stopattack or /stopcasting before using the item. They are per slot and
 --   shared by every character, like the equipment macros themselves.
 --
+-- Modifier keys aren't set here either: right-click a spell macro for its "Shift", "Ctrl" and "Alt" menus,
+--   where you pick another learned spell, by section, that the macro casts while that key is held. With
+--   several keys held, Shift wins over Ctrl and Ctrl over Alt. The picked spell is cast the way its own
+--   macro targets: turn on "Cast On Mouseover" (or "Cast At Cursor") for that spell's macro and every macro
+--   using it with a modifier follows. A spell with "Cast On Focus" on is also listed as "<spell> (Focus)",
+--   the macro's own spell included: it casts on your focus target (or your target when you have none),
+--   and turning that spell's focus macro off clears the pick.
+--   Alt is the game's self-cast key by default, so a helpful Alt spell with no mouseover target may land on
+--   you. Focus copies don't use modifiers. A macro can be at most 255 characters: one that grows past it
+--   says so in its tooltip and can't be placed until you turn something off.
+--
 -- extraSpells: spell IDs to list with "Show Unlearned" on until learned, for spells that neither the
 --   bundled trainer data (Data/) nor your class trainer offers, e.g. quest or book spells. Use the rank 1 ID
 --   (the number in the spell's Wowhead URL).

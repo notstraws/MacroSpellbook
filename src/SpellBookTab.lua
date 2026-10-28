@@ -11,6 +11,8 @@ end
 
 local setMacro, refresh
 
+local MODIFIER_LABELS = {shift = "Shift", ctrl = "Ctrl", alt = "Alt"}
+
 -- Every spell macro has a menu; custom macros don't. A focus copy's menu only removes it.
 local function showMacroMenu(button)
     local macro = button.macro
@@ -23,12 +25,9 @@ local function showMacroMenu(button)
                 function() return smb.isOptionOn(macro, key) end,
                 function()
                     smb.toggleOption(macro, key)
-                    if key == "focus" or key == "petAttack" or key == "raidRank1" or key == "spam"
-                            or key == "stance" then
-                        refresh(button:GetParent()) -- adds, removes or rewrites the focus copy
-                    elseif button.macro == macro then
-                        setMacro(button, macro)
-                    end
+                    -- adds, removes or rewrites the focus copy, and rewrites the macros casting this spell
+                    -- with a modifier key
+                    refresh(button:GetParent())
                 end)
         end
         if macro.focus then
@@ -102,6 +101,62 @@ local function showMacroMenu(button)
         end
         addSide("before")
         addSide("after")
+        if not smb.offersModifiers(macro) then return end
+        -- one submenu per modifier key, picking the spell cast while it is held from the page's learned
+        -- spells, grouped by section, as {name, onFocus}. A spell with a focus copy also offers casting it on
+        -- the focus target, the macro's own spell included
+        local sections = {}
+        for _, other in ipairs(smb.macros) do
+            local isSpell = smb.macroByName[other.name] == other
+            if not other.unlearned and ((isSpell and other.name ~= macro.name) or other.focus) then
+                local section = sections[#sections]
+                if not section or section.name ~= other.category then
+                    section = {name = other.category}
+                    sections[#sections + 1] = section
+                end
+                section[#section + 1] = {name = other.name, onFocus = other.focus == true}
+            end
+        end
+        local function pickLabel(name, onFocus)
+            return name .. (onFocus and " (Focus)" or "")
+        end
+        rootDescription:CreateDivider()
+        for _, mod in ipairs(smb.MODIFIERS) do
+            local label = MODIFIER_LABELS[mod]
+            local function isPicked(name, onFocus)
+                local pickedName, pickedFocus = smb.modifierSpell(macro, mod)
+                return pickedName == name and pickedFocus == onFocus
+            end
+            local function pick(name, onFocus)
+                smb.setModifierSpell(macro, mod, name, onFocus)
+                refresh(button:GetParent()) -- rewrites the macro and its subtext
+            end
+            local current, currentFocus = smb.modifierSpell(macro, mod)
+            local submenu = rootDescription:CreateButton(label .. ": "
+                .. (current and pickLabel(current, currentFocus) or "None"))
+            submenu:CreateTitle("Cast While " .. label .. " Is Held")
+            submenu:CreateRadio("None", function() return smb.modifierSpell(macro, mod) == nil end,
+                function() pick(nil) end)
+            local listed = false
+            for _, section in ipairs(sections) do
+                local sectionMenu = submenu:CreateButton(section.name)
+                for _, entry in ipairs(section) do
+                    local name, onFocus = entry.name, entry.onFocus
+                    listed = listed or (name == current and onFocus == currentFocus)
+                    sectionMenu:CreateRadio(pickLabel(name, onFocus), function() return isPicked(name, onFocus) end,
+                        function() pick(name, onFocus) end)
+                end
+            end
+            -- a pick no longer learned (e.g. after a respec), or a focus pick without a focus copy (only
+            -- from old saved data), stays listed, so the player sees why it does nothing
+            if current and not listed then
+                local why = smb.macroByName[current] and not smb.macroByName[current].unlearned and "no focus macro"
+                    or "not learned"
+                submenu:CreateRadio(pickLabel(current, currentFocus) .. " (" .. why .. ")",
+                    function() return isPicked(current, currentFocus) end,
+                    function() pick(current, currentFocus) end)
+            end
+        end
     end)
 end
 
@@ -228,6 +283,10 @@ local function createMacroButton(parent)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:SetText(self.macro.name)
         GameTooltip:AddLine(self.macro.body, 1, 1, 1, true)
+        if self.macro.tooLong then
+            GameTooltip:AddLine("Too long: " .. #self.macro.body .. "/255 characters. Turn off some options.",
+                1, 0.1, 0.1, true)
+        end
         if self.macro.unlearned then
             GameTooltip:AddLine("Not learned yet.", 1, 0.1, 0.1, true)
         elseif self.glow:IsShown() then
@@ -287,6 +346,9 @@ function setMacro(button, macro, bars)
         button.subText:SetTextColor(unpack(MOUSEOVER_COLOR))
     elseif smb.isOptionOn(macro, "stance") then
         button.subText:SetText("Stance")
+        button.subText:SetTextColor(unpack(MOUSEOVER_COLOR))
+    elseif smb.hasModifierOn(macro) then
+        button.subText:SetText("Modifiers")
         button.subText:SetTextColor(unpack(MOUSEOVER_COLOR))
     elseif smb.useItemSlots(macro, "before")[1] or smb.useItemSlots(macro, "after")[1] then
         button.subText:SetText("Use items")
