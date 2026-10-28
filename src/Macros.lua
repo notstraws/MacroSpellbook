@@ -907,9 +907,36 @@ local function syncMacro(macro, index)
     end
 end
 
--- Creates the macro on first use (character specific, or general once those slots are full), then puts
--- it on the cursor so it can be dropped on an action bar. Equipment macros are always general: their body
--- names only the slot, so every character shares them.
+-- Whether every General macro slot is used. The login cleanup only runs then (see Cleanup.lua).
+function smb.isGeneralFull()
+    return (GetNumMacros()) >= maxAccountMacros()
+end
+
+-- Per-account set of the general macros this addon created, by WoW macro name. Login clears them out of the
+-- General tab (see smb.resetGeneralMacros), so one character's overflow does not clutter the others'.
+local function generalMacros()
+    return settings("generalMacros")
+end
+
+-- Creates a WoW macro: character specific, or general once those slots are full. Equipment macros are always
+-- general. Returns its index, or nil when no slot is free (see reportMacrosFull).
+local function createMacro(name, icon, body, equipment)
+    local numAccount, numCharacter = GetNumMacros()
+    local perCharacter = not equipment and numCharacter < maxCharacterMacros()
+    if not perCharacter and numAccount >= maxAccountMacros() then return nil end
+    if not perCharacter then generalMacros()[name] = true end
+    return CreateMacro(name, icon, body, perCharacter)
+end
+
+-- Tells the player createMacro found no free slot: an error line, and the popup unless they turned it off.
+local function reportMacrosFull(equipment)
+    UIErrorsFrame:AddMessage(addonName .. ": no free " .. (equipment and "general " or "")
+        .. "macro slots.", 1, 0.1, 0.1)
+    if smb.showMacrosFull then smb.showMacrosFull(equipment) end
+end
+
+-- Creates the macro on first use, then puts it on the cursor so it can be dropped on an action bar. Equipment
+-- macros are always general: their body names only the slot, so every character shares them.
 function smb.pickupMacro(macro)
     if InCombatLockdown() then
         UIErrorsFrame:AddMessage(ERR_NOT_IN_COMBAT, 1, 0.1, 0.1)
@@ -917,14 +944,11 @@ function smb.pickupMacro(macro)
     end
     local index = GetMacroIndexByName(macro.macroName)
     if index == 0 then
-        local numAccount, numCharacter = GetNumMacros()
-        local perCharacter = not macro.equipment and numCharacter < maxCharacterMacros()
-        if not perCharacter and numAccount >= maxAccountMacros() then
-            UIErrorsFrame:AddMessage(addonName .. ": no free " .. (macro.equipment and "general " or "")
-                .. "macro slots.", 1, 0.1, 0.1)
+        index = createMacro(macro.macroName, macro.macroIcon, macro.body, macro.equipment)
+        if not index then
+            reportMacrosFull(macro.equipment)
             return
         end
-        index = CreateMacro(macro.macroName, macro.macroIcon, macro.body, perCharacter)
     else
         syncMacro(macro, index)
     end
@@ -957,6 +981,107 @@ function smb.scanActionBars()
         end
     end
     return bars
+end
+
+-- Whether the general macro at index is one this addon made: createMacro recorded its name, or it has a page
+-- macro's name and body (a macro made before that record existed; the body check spares a hand-made macro
+-- that happens to share a spell's name). Also returns whether it is an equipment macro.
+local function isAddonGeneralMacro(index)
+    local name, _, body = GetMacroInfo(index)
+    if not name then return false end
+    for _, macro in ipairs(smb.macros) do
+        if macro.macroName == name and (generalMacros()[name] or macro.body == body) then
+            return true, macro.equipment == true
+        end
+    end
+    return generalMacros()[name] == true, false
+end
+
+-- isAddonGeneralMacro needs the page macros, which are otherwise only built when the page is first shown.
+local function ensureMacros()
+    if #smb.macros == 0 then smb.collectMacros() end
+end
+
+-- Saves which of the addon's general macros are on this character's action bars, and where, to
+-- MacroSpellbookCharDB.generalMacros ({[name] = {icon, body, equipment, slots}}), so smb.resetGeneralMacros
+-- can put them back at the next login. Run while playing, whenever the bars or macros change: by logout the
+-- action bars may already be gone.
+function smb.recordGeneralMacros()
+    ensureMacros()
+    local numAccount = GetNumMacros()
+    local recorded = {}
+    for slot = 1, MAX_ACTION_SLOTS do
+        local actionType, id, subType = GetActionInfo(slot)
+        local name = actionType == "macro" and (GetActionText(slot) or (subType ~= "spell" and GetMacroInfo(id)))
+        local index = name and GetMacroIndexByName(name) or 0 -- general indices come first
+        if recorded[name] then
+            local slots = recorded[name].slots
+            slots[#slots + 1] = slot
+        elseif index ~= 0 and index <= numAccount then
+            local isAddon, equipment = isAddonGeneralMacro(index)
+            if isAddon then
+                local _, icon, body = GetMacroInfo(index)
+                recorded[name] = {icon = icon, body = body, equipment = equipment or nil, slots = {slot}}
+            end
+        end
+    end
+    MacroSpellbookCharDB = MacroSpellbookCharDB or {}
+    MacroSpellbookCharDB.generalMacros = recorded
+end
+
+-- The name of the macro in an action slot, or nil when the slot holds no macro (or one that no longer exists).
+-- Also returns whether the slot holds something else: a spell, an item, or a live macro.
+local function slotMacro(slot)
+    local actionType, id, subType = GetActionInfo(slot)
+    if actionType ~= "macro" then return nil, actionType ~= nil end
+    local name = GetActionText(slot) or (subType ~= "spell" and GetMacroInfo(id))
+    if not name or GetMacroIndexByName(name) == 0 then return nil, false end -- left by a deleted macro
+    return name, true
+end
+
+-- Called at login: deletes the addon's general macros (any character's), so another character's overflow
+-- does not clutter this one's General tab, then recreates the ones this character had on its action bars (in
+-- the character tab when there is room). smb.restoreGeneralMacroSlots puts them back on the bars after.
+function smb.resetGeneralMacros()
+    if InCombatLockdown() then return end
+    ensureMacros()
+    for index = GetNumMacros(), 1, -1 do -- backwards: a delete shifts the later indices down
+        if isAddonGeneralMacro(index) then DeleteMacro(index) end
+    end
+    wipe(generalMacros())
+
+    local recorded = MacroSpellbookCharDB and MacroSpellbookCharDB.generalMacros or {}
+    local full, fullEquipment = false, false
+    for name, saved in pairs(recorded) do
+        if GetMacroIndexByName(name) == 0 and not createMacro(name, saved.icon, saved.body, saved.equipment) then
+            full, fullEquipment = true, fullEquipment or saved.equipment == true
+        end
+    end
+    if full then reportMacrosFull(fullEquipment) end -- once, not for each macro left out
+end
+
+-- Puts the macros smb.resetGeneralMacros recreated back in their recorded action slots: the empty ones, and the
+-- ones still pointing at the deleted macro, never one holding something else. A just created macro may not
+-- be ready to pick up yet, so this is retried until it returns true: every slot holds its macro (or can't).
+function smb.restoreGeneralMacroSlots()
+    if InCombatLockdown() then return false end
+    local recorded = MacroSpellbookCharDB and MacroSpellbookCharDB.generalMacros or {}
+    local done = true
+    for name, saved in pairs(recorded) do
+        local index = GetMacroIndexByName(name)
+        if index ~= 0 then
+            for _, slot in ipairs(saved.slots) do
+                local current, occupied = slotMacro(slot)
+                if current ~= name and not occupied then
+                    PickupMacro(index)
+                    PlaceAction(slot)
+                    ClearCursor()
+                    done = false -- checked on the next try
+                end
+            end
+        end
+    end
+    return done
 end
 
 -- Whether a page macro is on the action bars, scanned by smb.scanActionBars. A spell macro with no

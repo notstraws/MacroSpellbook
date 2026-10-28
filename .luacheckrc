@@ -21,17 +21,17 @@ read_globals = {
 	"C_TooltipInfo", "C_Trainer", "Enum", "EventRegistry", "EventUtil", "InputUtil", "MenuUtil",
 
 	-- Functions
-	"CreateFrame", "CreateMacro", "EditMacro", "GetActionInfo", "GetActionText",
+	"ClearCursor", "CreateFrame", "CreateMacro", "DeleteMacro", "EditMacro", "GetActionInfo", "GetActionText",
 	"GetInventoryItemLink", "GetInventoryItemTexture", "GetItemSpell",
 	"GetMacroIndexByName", "GetMacroInfo", "GetNumMacros", "GetNumShapeshiftForms",
 	"GetNumSpellTabs", "GetNumTrainerServices", "GetShapeshiftFormInfo", "GetSpellBookItemInfo",
 	"GetSpellBookItemName", "GetSpellBookItemTexture", "GetSpellTabInfo", "GetSpellTexture",
 	"GetTrainerServiceLevelReq", "InCombatLockdown",
-	"IsHarmfulSpell", "IsPassiveSpell", "IsTradeskillTrainer", "LibStub", "PickupMacro", "PlaySound", "RunNextFrame",
-	"SpellHasRange",
+	"IsHarmfulSpell", "IsPassiveSpell", "IsTradeskillTrainer", "LibStub", "PickupMacro", "PlaceAction", "PlaySound", "RunNextFrame",
+	"SpellHasRange", "tinsert",
 	"UnitClass", "UnitFactionGroup", "UnitRace",
 
 	-- Frames / objects / constants
-	"GameTooltip", "PlayerSpellsFrame", "UIErrorsFrame", "UIParent", "WorldFrame",
-	"BOOKTYPE_SPELL", "ERR_NOT_IN_COMBAT", "ITEM_SPELL_TRIGGER_ONUSE", "MAX_ACCOUNT_MACROS", "MAX_CHARACTER_MACROS", "SOUNDKIT",
+	"GameTooltip", "PlayerSpellsFrame", "UIErrorsFrame", "UIParent", "UISpecialFrames", "WorldFrame",
+	"BOOKTYPE_SPELL", "ERR_NOT_IN_COMBAT", "ITEM_SPELL_TRIGGER_ONUSE", "MAX_ACCOUNT_MACROS", "MAX_CHARACTER_MACROS", "OKAY", "SOUNDKIT",
 }

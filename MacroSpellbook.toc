@@ -33,4 +33,5 @@ src\Data\Warrior.lua
 
 src\Trainer.lua
 src\Macros.lua
+src\Cleanup.lua
 src\SpellBookTab.lua
