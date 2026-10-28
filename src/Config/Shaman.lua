@@ -4,15 +4,6 @@ local _, smb = ...
 smb.classConfigs.SHAMAN = {
     categories = {
         { name = "Custom" },
-        { name = "Healing", spells = {
-            "Healing Wave",
-            "Lesser Healing Wave",
-            "Chain Heal",
-            "Riptide",
-            "Nature's Swiftness",
-            "Ancestral Spirit",
-            "Reincarnation",
-        } },
         { name = "Damage", spells = {
             "Lightning Bolt",
             "Chain Lightning",
@@ -25,13 +16,20 @@ smb.classConfigs.SHAMAN = {
             "Elemental Mastery",
             "Rage of the Farseer",
         } },
+        { name = "Healing", spells = {
+            "Healing Wave",
+            "Lesser Healing Wave",
+            "Chain Heal",
+            "Riptide",
+            "Nature's Swiftness",
+            "Ancestral Spirit",
+            "Reincarnation",
+        } },
         { name = "Utility", spells = {
             "Purge",
             "Cure Poison",
             "Cure Disease",
             "Ghost Wolf",
-            "Water Breathing",
-            "Water Walking",
             "Far Sight",
             "Astral Recall",
             "Call of the *",
@@ -45,6 +43,8 @@ smb.classConfigs.SHAMAN = {
             "Windfury Weapon",
             "Lightning Shield",
             "Water Shield",
+            "Water Breathing",
+            "Water Walking",
         } },
         { name = "Earth Totems", spells = {
             "Earthbind Totem",
