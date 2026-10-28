@@ -4,7 +4,7 @@ local _, smb = ...
 smb.classConfigs.MAGE = {
     categories = {
         { name = "Custom" },
-        { name = "Damage", spells = {
+        { name = "Damage", cooldownSteps = true, spells = {
             "Frostbolt",
             "Fireball",
             "Frostfire Bolt",
@@ -37,7 +37,7 @@ smb.classConfigs.MAGE = {
             "Combustion",
             "Cold Snap",
         } },
-        { name = "Buffs & Defence", spells = {
+        { name = "Buffs & Defence", sequence = true, spells = {
             "Arcane Intellect",
             "Arcane Brilliance",
             "Amplify Magic",
@@ -78,6 +78,12 @@ smb.classConfigs.MAGE = {
     cursor = {
         "Flamestrike",
         "Blizzard",
+    },
+
+    cooldowns = {
+        "Presence of Mind",
+        "Arcane Power",
+        "Combustion",
     },
 
     channeled = {

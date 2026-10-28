@@ -4,7 +4,7 @@ local _, smb = ...
 smb.classConfigs.SHAMAN = {
     categories = {
         { name = "Custom" },
-        { name = "Damage", spells = {
+        { name = "Damage", cooldownSteps = true, spells = {
             "Lightning Bolt",
             "Chain Lightning",
             "Lava Burst",
@@ -14,9 +14,8 @@ smb.classConfigs.SHAMAN = {
             "Fire Nova",
             "Stormstrike",
             "Elemental Mastery",
-            "Rage of the Farseer",
         } },
-        { name = "Healing", spells = {
+        { name = "Healing", cooldownSteps = true, spells = {
             "Healing Wave",
             "Lesser Healing Wave",
             "Chain Heal",
@@ -36,7 +35,7 @@ smb.classConfigs.SHAMAN = {
             "Totemic Recall",
             "Totemic Projection",
         } },
-        { name = "Buffs & Defence", spells = {
+        { name = "Buffs & Defence", sequence = true, spells = {
             "Rockbiter Weapon",
             "Flametongue Weapon",
             "Frostbrand Weapon",
@@ -45,6 +44,7 @@ smb.classConfigs.SHAMAN = {
             "Water Shield",
             "Water Breathing",
             "Water Walking",
+            "Rage of the Farseer",
         } },
         { name = "Earth Totems", spells = {
             "Earthbind Totem",
@@ -102,6 +102,12 @@ smb.classConfigs.SHAMAN = {
 
     cursor = {
         "Totemic Projection",
+    },
+
+    cooldowns = {
+        "Rage of the Farseer",
+        "Elemental Mastery",
+        "Nature's Swiftness",
     },
 
     channeled = {},

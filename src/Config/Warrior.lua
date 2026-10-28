@@ -9,7 +9,7 @@ smb.classConfigs.WARRIOR = {
             "Defensive Stance",
             "Berserker Stance",
         } },
-        { name = "Damage", spells = {
+        { name = "Damage", cooldownSteps = true, spells = {
             "Heroic Strike",
             "Cleave",
             "Slam",
@@ -42,7 +42,7 @@ smb.classConfigs.WARRIOR = {
             "Demoralizing Shout",
             "Disarm",
         } },
-        { name = "Buffs & Defence", spells = {
+        { name = "Buffs & Defence", sequence = true, spells = {
             "Battle Shout",
             "Bloodrage",
             "Berserker Rage",
@@ -67,6 +67,12 @@ smb.classConfigs.WARRIOR = {
     mouseoverFriend = {},
 
     cursor = {},
+
+    cooldowns = {
+        "Death Wish",
+        "Recklessness",
+        "Sweeping Strikes",
+    },
 
     channeled = {},
 

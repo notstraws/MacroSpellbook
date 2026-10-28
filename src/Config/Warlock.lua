@@ -4,7 +4,7 @@ local _, smb = ...
 smb.classConfigs.WARLOCK = {
     categories = {
         { name = "Custom" },
-        { name = "Damage", spells = {
+        { name = "Damage", cooldownSteps = true, spells = {
             "Shadow Bolt",
             "Immolate",
             "Incinerate",
@@ -41,7 +41,7 @@ smb.classConfigs.WARLOCK = {
             "Eye of Kilrogg",
             "Sense Demons",
         } },
-        { name = "Buffs & Defence", spells = {
+        { name = "Buffs & Defence", sequence = true, spells = {
             "Demon Skin",
             "Demon Armor",
             "Soul Link",
@@ -95,6 +95,10 @@ smb.classConfigs.WARLOCK = {
 
     raidRank1 = {
         "Curse of *",
+    },
+
+    cooldowns = {
+        "Amplify Curse",
     },
 
     channeled = {

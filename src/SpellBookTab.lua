@@ -21,7 +21,7 @@ local function showMacroMenu(button)
         -- an equipment macro's menu is titled by its one section instead
         if not macro.equipment then rootDescription:CreateTitle(macro.name) end
         local function addOption(label, key)
-            rootDescription:CreateCheckbox(label,
+            return rootDescription:CreateCheckbox(label,
                 function() return smb.isOptionOn(macro, key) end,
                 function()
                     smb.toggleOption(macro, key)
@@ -43,7 +43,10 @@ local function showMacroMenu(button)
         if macro.target then addOption("Cast On Mouseover", "mouseover") end
         if macro.cursor then addOption("Cast At Cursor", "cursor") end
         if macro.petAbility then addOption("Cast " .. macro.petAbility .. " If Summoned", "pet") end
-        if macro.raidRank1 then addOption("Downrank In Raids", "raidRank1") end
+        if macro.raidRank1 then
+            -- a sequence can't downrank (see castBody in Macros.lua)
+            addOption("Downrank In Raids", "raidRank1"):SetEnabled(function() return not smb.hasSequenceOn(macro) end)
+        end
         if macro.spam then addOption("Spammable", "spam") end
         if macro.stances then addOption("Switch To " .. macro.stances[1], "stance") end
         if macro.target then addOption("Cast On Focus", "focus") end
@@ -51,10 +54,10 @@ local function showMacroMenu(button)
         -- one submenu per side of the cast: /startattack, the race's racials and the equipped on-use items,
         -- each on either side, both or neither, and /stopcasting before only
         local function addSide(side)
-            -- each line as {label, isOn, toggle}
+            -- each line as {label, id, isOn, toggle}, the id naming it for smb.sidePosition
             local lines = {}
             local function addLine(key, label)
-                lines[#lines + 1] = {label,
+                lines[#lines + 1] = {label, key,
                     function() return smb.isLineOn(macro, key, side) end,
                     function() smb.toggleLine(macro, key, side) end}
             end
@@ -62,10 +65,21 @@ local function showMacroMenu(button)
             if side == "before" and smb.offersStopCast(macro) then addLine("stopCast", "Stop Casting") end
             if smb.offersUseItems(macro) then
                 for _, racial in ipairs(smb.offeredRacials()) do
-                    lines[#lines + 1] = {"Racial: " .. racial,
+                    lines[#lines + 1] = {"Racial: " .. racial, racial,
                         function() return smb.isRacialOn(macro, racial, side) end,
                         function() smb.toggleRacial(macro, racial, side) end}
                 end
+            end
+            -- a ticked line's label ends with its place in the macro, in the order the player ticked them
+            local function placed(label, id)
+                local at = smb.sidePosition(macro, id, side)
+                return label .. (at and " (" .. at .. ")" or "")
+            end
+            -- rewrites the label on every refresh, so its place updates while the menu stays open
+            local function livePlaced(checkbox, label, id)
+                checkbox:AddInitializer(function(frame)
+                    frame.fontString:SetText(placed(label, id))
+                end)
             end
             -- the equipped on-use items, plus any slot already ticked so it can be unticked after a gear swap
             local slots, listed = {}, {}
@@ -82,25 +96,67 @@ local function showMacroMenu(button)
             local submenu = rootDescription:CreateButton(title)
             submenu:CreateTitle(title)
             for _, line in ipairs(lines) do
-                local label, isOn, toggle = line[1], line[2], line[3]
-                submenu:CreateCheckbox(label, isOn, function()
+                local label, id, isOn, toggle = line[1], line[2], line[3], line[4]
+                livePlaced(submenu:CreateCheckbox(placed(label, id), isOn, function()
                     toggle()
                     refresh(button:GetParent()) -- rewrites the focus copy too
-                end)
+                    return MenuResponse.Refresh -- renumbers the other labels
+                end), label, id)
             end
             if #lines > 0 and #slots > 0 then submenu:CreateDivider() end
             for _, slot in ipairs(slots) do
-                local at = smb.isUsingSlot(macro, slot, side)
-                submenu:CreateCheckbox(smb.slotLabel(slot) .. (at and " (" .. at .. ")" or ""),
+                local label = smb.slotLabel(slot)
+                livePlaced(submenu:CreateCheckbox(placed(label, slot),
                     function() return smb.isUsingSlot(macro, slot, side) ~= nil end,
                     function()
                         smb.toggleUseSlot(macro, slot, side)
                         refresh(button:GetParent()) -- rewrites the focus copy too
-                    end)
+                        return MenuResponse.Refresh -- renumbers the other labels
+                    end), label, slot)
             end
         end
         addSide("before")
         addSide("after")
+        if smb.offersSequence(macro) then
+            -- the spells cast after the macro's own, ticked in order: the ones smb.canSequence allows, under
+            -- their section's title
+            local function changed()
+                refresh(button:GetParent()) -- rewrites the macro, its focus copy and its subtext
+            end
+            local picked = smb.sequenceSpells(macro)
+            local submenu = rootDescription:CreateButton("Sequence: "
+                .. (#picked > 0 and (#picked + 1) .. " spells" or "None"))
+            submenu:CreateTitle("Cast In Sequence (resets after 2 sec)")
+            submenu:CreateButton("Clear", function()
+                smb.clearSequence(macro)
+                changed()
+            end)
+            local function addPick(name, suffix)
+                local pos = smb.sequencePosition(macro, name)
+                submenu:CreateCheckbox(name .. (pos and " (" .. pos .. ")" or "") .. (suffix or ""),
+                    function() return smb.sequencePosition(macro, name) ~= nil end,
+                    function()
+                        smb.toggleSequenceSpell(macro, name)
+                        changed()
+                    end)
+            end
+            local listed, section = {}, nil
+            for _, other in ipairs(smb.macros) do
+                if smb.macroByName[other.name] == other and smb.canSequence(macro, other) then
+                    if other.category ~= section then
+                        section = other.category
+                        submenu:CreateTitle(section)
+                    end
+                    listed[other.name] = true
+                    addPick(other.name)
+                end
+            end
+            -- a pick no longer learned (e.g. after a respec) or moved out of a sequence section stays listed,
+            -- so it can be unticked
+            for _, name in ipairs(picked) do
+                if not listed[name] then addPick(name, " (unavailable)") end
+            end
+        end
         if not smb.offersModifiers(macro) then return end
         -- one submenu per modifier key, picking the spell cast while it is held from the page's learned
         -- spells, grouped by section, as {name, onFocus}. A spell with a focus copy also offers casting it on
@@ -346,6 +402,9 @@ function setMacro(button, macro, bars)
         button.subText:SetTextColor(unpack(MOUSEOVER_COLOR))
     elseif smb.isOptionOn(macro, "stance") then
         button.subText:SetText("Stance")
+        button.subText:SetTextColor(unpack(MOUSEOVER_COLOR))
+    elseif smb.hasSequenceOn(macro) then
+        button.subText:SetText("Sequence")
         button.subText:SetTextColor(unpack(MOUSEOVER_COLOR))
     elseif smb.hasModifierOn(macro) then
         button.subText:SetText("Modifiers")

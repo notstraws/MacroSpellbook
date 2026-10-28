@@ -4,7 +4,7 @@ local _, smb = ...
 smb.classConfigs.PALADIN = {
     categories = {
         { name = "Custom" },
-        { name = "Damage", spells = {
+        { name = "Damage", cooldownSteps = true, spells = {
             "Judgement",
             "Swift Judgement",
             "Holy Strike",
@@ -14,7 +14,7 @@ smb.classConfigs.PALADIN = {
             "Holy Wrath",
             "Holy Shield",
         } },
-        { name = "Healing", spells = {
+        { name = "Healing", cooldownSteps = true, spells = {
             "Holy Light",
             "Flash of Light",
             "Holy Shock",
@@ -34,7 +34,7 @@ smb.classConfigs.PALADIN = {
             "Summon Warhorse",
             "Summon Charger",
         } },
-        { name = "Buffs & Defence", spells = {
+        { name = "Buffs & Defence", sequence = true, spells = {
             "Seal of *",
             "Blessing of *",
             "Greater Blessing of *",
@@ -85,6 +85,10 @@ smb.classConfigs.PALADIN = {
     },
 
     cursor = {},
+
+    cooldowns = {
+        "Divine Favor",
+    },
 
     channeled = {},
 

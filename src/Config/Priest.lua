@@ -4,7 +4,7 @@ local _, smb = ...
 smb.classConfigs.PRIEST = {
     categories = {
         { name = "Custom" },
-        { name = "Damage", spells = {
+        { name = "Damage", cooldownSteps = true, spells = {
             "Smite",
             "Holy Fire",
             "Mind Blast",
@@ -19,7 +19,7 @@ smb.classConfigs.PRIEST = {
             "Mana Burn",
             "Vampiric Embrace",
         } },
-        { name = "Healing", spells = {
+        { name = "Healing", cooldownSteps = true, spells = {
             "Lesser Heal",
             "Heal",
             "Greater Heal",
@@ -52,7 +52,7 @@ smb.classConfigs.PRIEST = {
             "Contingency Plan",
             "Divine Grace",
         } },
-        { name = "Buffs & Defence", spells = {
+        { name = "Buffs & Defence", sequence = true, spells = {
             "Power Word: Fortitude",
             "Prayer of Fortitude",
             "Divine Spirit",
@@ -115,6 +115,11 @@ smb.classConfigs.PRIEST = {
     },
 
     cursor = {},
+
+    cooldowns = {
+        "Inner Focus",
+        "Power Infusion",
+    },
 
     channeled = {
         "Mind Flay",

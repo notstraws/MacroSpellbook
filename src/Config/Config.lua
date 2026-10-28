@@ -12,7 +12,9 @@ local _, smb = ...
 --   in Damage wins over a later section's "Curse of *". A section with no spells marks where custom
 --   macros with that category go. Learned spells in no section go in an "Unsorted" section at the end,
 --   in alphabetical order. Add noGlow = true to a section, e.g. { name = "Auras", noGlow = true, spells =
---   { ... } }, to stop its spells glowing when they aren't on your action bars.
+--   { ... } }, to stop its spells glowing when they aren't on your action bars. Add sequence = true to a
+--   section to let its spells cast in sequence (see Cast sequences below). Add cooldownSteps = true to a
+--   section, e.g. Damage or Healing, to offer its spells only in cooldown spells' sequences.
 --
 -- mouseoverEnemy / mouseoverFriend: spells that offer "Cast On Mouseover" (right-click a macro), cast on a
 --   hostile / friendly mouseover target. A spell in both lists casts on either. Every harmful spell with a
@@ -34,6 +36,11 @@ local _, smb = ...
 --
 -- stealth: stealth spells that offer "Spammable" (right-click a macro): the cast gets a [nostealth]
 --   condition, so pressing the macro again while stealthed doesn't take you out of stealth.
+--
+-- cooldowns: spells such as Rage of the Farseer that offer the "Sequence" menu (see Cast sequences below)
+--   in whatever section they are. Their menu also lists the spells in cooldownSteps = true sections, so the
+--   cooldown can be followed by damage or healing spells, e.g. Lightning Bolt. To use a trinket with it,
+--   tick the trinket in the macro's Before Casting menu.
 --
 -- stances: spells that offer "Switch To <stance>" (right-click a macro), as
 --   { ["Hamstring"] = { "Battle Stance", "Berserker Stance" }, ... }: the stances the spell can be cast in.
@@ -82,6 +89,13 @@ local _, smb = ...
 --   Alt is the game's self-cast key by default, so a helpful Alt spell with no mouseover target may land on
 --   you. Focus copies don't use modifiers. A macro can be at most 255 characters: one that grows past it
 --   says so in its tooltip and can't be placed until you turn something off.
+--
+-- Cast sequences: right-click a spell macro in a section with sequence = true, or a cooldowns spell, for its
+--   "Sequence" menu, where you tick other learned spells from sequence = true sections (and, for a cooldown,
+--   cooldownSteps = true sections) in the order the macro should cast them after its own spell: each press casts the next one (/castsequence). The sequence starts over from its first spell
+--   after 2 seconds without a press. Every step is cast the way the macro's own spell is, e.g. on the
+--   mouseover target with "Cast On Mouseover" on. "Downrank In Raids" is off while a sequence is set, and a
+--   macro that casts its pet's ability has no sequence.
 --
 -- extraSpells: spell IDs to list with "Show Unlearned" on until learned, for spells that neither the
 --   bundled trainer data (Data/) nor your class trainer offers, e.g. quest or book spells. Use the rank 1 ID
