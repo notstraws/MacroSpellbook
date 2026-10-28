@@ -4,21 +4,6 @@ local _, smb = ...
 smb.classConfigs.PRIEST = {
     categories = {
         { name = "Custom" },
-        { name = "Healing", spells = {
-            "Lesser Heal",
-            "Heal",
-            "Greater Heal",
-            "Flash Heal",
-            "Renew",
-            "Power Word: Shield",
-            "Binding Heal",
-            "Prayer of Mending",
-            "Penance",
-            "Prayer of Healing",
-            "Holy Nova",
-            "Desperate Prayer",
-            "Lightwell",
-        } },
         { name = "Damage", spells = {
             "Smite",
             "Holy Fire",
@@ -33,6 +18,21 @@ smb.classConfigs.PRIEST = {
             "Touch of Weakness",
             "Mana Burn",
             "Vampiric Embrace",
+        } },
+        { name = "Healing", spells = {
+            "Lesser Heal",
+            "Heal",
+            "Greater Heal",
+            "Flash Heal",
+            "Renew",
+            "Power Word: Shield",
+            "Binding Heal",
+            "Prayer of Mending",
+            "Penance",
+            "Prayer of Healing",
+            "Holy Nova",
+            "Desperate Prayer",
+            "Lightwell",
         } },
         { name = "Utility", spells = {
             "Dispel Magic",

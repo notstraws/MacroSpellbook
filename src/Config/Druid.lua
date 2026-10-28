@@ -4,17 +4,6 @@ local _, smb = ...
 smb.classConfigs.DRUID = {
     categories = {
         { name = "Custom" },
-        { name = "Healing", spells = {
-            "Healing Touch",
-            "Regrowth",
-            "Rejuvenation",
-            "Wild Growth",
-            "Swiftmend",
-            "Tranquility",
-            "Nature's Swiftness",
-            "Rebirth",
-            "Revive",
-        } },
         { name = "Damage", spells = {
             "Wrath",
             "Starfire",
@@ -35,6 +24,17 @@ smb.classConfigs.DRUID = {
             "Lacerate",
             "Faerie Fire",
             "Faerie Fire (Feral)",
+        } },
+        { name = "Healing", spells = {
+            "Healing Touch",
+            "Regrowth",
+            "Rejuvenation",
+            "Wild Growth",
+            "Swiftmend",
+            "Tranquility",
+            "Nature's Swiftness",
+            "Rebirth",
+            "Revive",
         } },
         { name = "Utility", spells = {
             "Entangling Roots",

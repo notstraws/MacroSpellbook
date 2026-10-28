@@ -4,14 +4,6 @@ local _, smb = ...
 smb.classConfigs.PALADIN = {
     categories = {
         { name = "Custom" },
-        { name = "Healing", spells = {
-            "Holy Light",
-            "Flash of Light",
-            "Holy Shock",
-            "Lay on Hands",
-            "Divine Favor",
-            "Light's Vigil",
-        } },
         { name = "Damage", spells = {
             "Judgement",
             "Swift Judgement",
@@ -21,6 +13,14 @@ smb.classConfigs.PALADIN = {
             "Consecration",
             "Holy Wrath",
             "Holy Shield",
+        } },
+        { name = "Healing", spells = {
+            "Holy Light",
+            "Flash of Light",
+            "Holy Shock",
+            "Lay on Hands",
+            "Divine Favor",
+            "Light's Vigil",
         } },
         { name = "Utility", spells = {
             "Hammer of Justice",
